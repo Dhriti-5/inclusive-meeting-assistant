@@ -13,7 +13,7 @@ tokenizer = MarianTokenizer.from_pretrained(model_name)
 model = MarianMTModel.from_pretrained(model_name)
 
 # === Load input text (English) ===
-with open("../output/summary.txt", "r", encoding="utf-8") as f:
+with open(r"C:\Users\Pc\Deep Learning Specialization\inclusive-meeting-assistant\output\summary.txt", "r", encoding="utf-8") as f:
     text = f.read()
 
 # === Tokenize and translate ===
@@ -26,5 +26,6 @@ print(f"\nTranslated Summary ({tgt_lang}):\n")
 print(translated_text)
 
 # Optionally save to file
-with open(f"../output/summary_{tgt_lang}.txt", "w", encoding="utf-8") as f:
+with open(r"C:\Users\Pc\Deep Learning Specialization\inclusive-meeting-assistant\output\summary_hi.txt", "w", encoding="utf-8") as f:
     f.write(translated_text)
+
