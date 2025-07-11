@@ -1,34 +1,44 @@
 import pyttsx3
 import os
+import argparse
 
-def speak_text(file_path, language="en"):
-    if not os.path.exists(file_path):
-        raise FileNotFoundError(f"❌ File not found: {file_path}")
-    
+def save_audio(text, output_path, language="en"):
     engine = pyttsx3.init()
+
 
     voices = engine.getProperty('voices')
     if language == "hi":
-        # Try to select a Hindi voice (platform-dependent)
-        hindi_voice = next((v for v in voices if "hi" in v.id or "Hindi" in v.name), None)
+        hindi_voice = next((v for v in voices if "hi" in v.id.lower() or "hindi" in v.name.lower()), None)
         if hindi_voice:
             engine.setProperty('voice', hindi_voice.id)
         else:
             print("⚠️ Hindi voice not found. Using default voice.")
     else:
-        engine.setProperty('voice', voices[0].id)  # English default
+        engine.setProperty('voice', voices[0].id)  # Default to English
 
-    # Read the content
+
+    engine.save_to_file(text, output_path)
+    engine.runAndWait()
+    print(f"✅ Audio saved to: {output_path}")
+
+def main():
+    parser = argparse.ArgumentParser(description="🔊 Convert text summary to speech.")
+    parser.add_argument('--lang', type=str, choices=['en', 'hi'], default='en', help='Choose language (en or hi)')
+    args = parser.parse_args()
+
+   
+    base_dir = r"C:\Users\Pc\Deep Learning Specialization\inclusive-meeting-assistant\output"
+    file_path = os.path.join(base_dir, f"summary_{args.lang}.txt" if args.lang == 'hi' else "summary.txt")
+    output_audio = os.path.join(base_dir, f"summary_{args.lang}.wav")
+
+    if not os.path.exists(file_path):
+        print(f"❌ File not found: {file_path}")
+        return
+
     with open(file_path, "r", encoding="utf-8") as f:
         text = f.read()
 
-    print(f"🔊 Speaking text from: {file_path}")
-    engine.say(text)
-    engine.runAndWait()
+    save_audio(text, output_audio, language=args.lang)
 
-
-english_summary_path = r"C:\Users\Pc\Deep Learning Specialization\inclusive-meeting-assistant\output\summary.txt"
-speak_text(english_summary_path, language="en")
-
-hindi_summary_path = r"C:\Users\Pc\Deep Learning Specialization\inclusive-meeting-assistant\output\summary_hi.txt"
-speak_text(hindi_summary_path, language="hi")
+if __name__ == "__main__":
+    main()
