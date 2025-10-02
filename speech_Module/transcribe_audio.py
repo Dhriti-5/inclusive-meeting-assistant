@@ -18,5 +18,6 @@ def transcribe_audio(audio_path):
 if __name__ == "__main__":
     AUDIO_FILE = r"C:\Users\Pc\Deep Learning Specialization\inclusive-meeting-assistant\speech_Module\test_audio.wav"
     transcript = transcribe_audio(AUDIO_FILE)
+    os.makedirs("output", exist_ok=True)
     with open("output/transcript.txt", "w", encoding="utf-8") as f:
         f.write(transcript)

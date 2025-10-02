@@ -1,0 +1,120 @@
+# backend/pipeline_runner.py
+import os
+import sys
+
+# Add the project's root directory to sys.path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from nlp_Module.nlp_pipeline import nlp_pipeline
+from speech_Module.transcribe_audio import transcribe_audio as speech_to_text
+from tts_module.text_to_speech import text_to_speech
+from speaker_diarization import diarize_audio
+
+
+def run_pipeline_from_audio(audio_path, lang="en"):
+    """
+    Full pipeline: Audio → Diarization → Transcript → Summary → Translation → Action Items → TTS
+    """
+    # --- Step 0: Speaker Diarization ---
+    diarization_segments = diarize_audio(audio_path) or []
+    print("Diarization segments:", diarization_segments)
+
+    # --- Step 1: Transcription ---
+    transcript_segments = []
+    full_transcript_parts = []
+
+    if diarization_segments:
+        # Transcribe each diarized time range
+        for seg in diarization_segments:
+            start_time = seg.get("start")
+            end_time = seg.get("end")
+            speaker = seg.get("speaker")
+
+            # Transcribe only this segment of audio
+            seg_text = speech_to_text(audio_path, start_time=start_time, end_time=end_time)
+            transcript_segments.append({
+                "start": start_time,
+                "end": end_time,
+                "speaker": speaker,
+                "text": seg_text
+            })
+            full_transcript_parts.append(f"[{speaker}] {seg_text}")
+    else:
+        # No diarization — transcribe whole file
+        seg_text = speech_to_text(audio_path)
+        transcript_segments.append({
+            "start": 0.0,
+            "end": None,
+            "speaker": "UNKNOWN",
+            "text": seg_text
+        })
+        full_transcript_parts.append(f"[UNKNOWN] {seg_text}")
+
+    transcript = "\n".join(full_transcript_parts)
+
+    # Save transcript
+    os.makedirs("output", exist_ok=True)
+    with open("output/transcript.txt", "w", encoding="utf-8") as f:
+        f.write(transcript)
+
+    # --- Step 2: Summarize ---
+    summary = nlp_pipeline.summarize_text(transcript)
+    with open("output/summary.txt", "w", encoding="utf-8") as f:
+        f.write(summary)
+
+    # --- Step 3: Translate ---
+    translated = nlp_pipeline.translate_text(summary, "en", lang)
+    translated_file_path = f"output/summary_{lang}.txt"
+    with open(translated_file_path, "w", encoding="utf-8") as f:
+        f.write(translated)
+
+    # --- Step 4: Extract action items ---
+    action_items = nlp_pipeline.extract_action_items(summary)
+    with open("output/action_items.txt", "w", encoding="utf-8") as f:
+        f.write(action_items)
+
+    # --- Step 5: TTS for translated summary ---
+    text_to_speech(input_file=translated_file_path, lang=lang)
+    tts_path = translated_file_path.replace(".txt", ".wav")
+
+    return {
+        "transcript": transcript,
+        "transcript_segments": transcript_segments,  # NEW — for diarization alignment
+        "summary": summary,
+        "translated": translated,
+        "action_items": action_items,
+        "summary_audio": tts_path,
+        "diarization": diarization_segments
+    }
+
+
+def run_pipeline_from_transcript(lang="en"):
+    """
+    Full pipeline: Transcript (existing) → Summary → Translation → Action Items → TTS
+    """
+    with open("output/transcript.txt", "r", encoding="utf-8") as f:
+        transcript = f.read()
+
+    summary = nlp_pipeline.summarize_text(transcript)
+    with open("output/summary.txt", "w", encoding="utf-8") as f:
+        f.write(summary)
+
+    translated = nlp_pipeline.translate_text(summary, "en", lang)
+    translated_file_path = f"output/summary_{lang}.txt"
+    with open(translated_file_path, "w", encoding="utf-8") as f:
+        f.write(translated)
+
+    action_items = nlp_pipeline.extract_action_items(summary)
+    with open("output/action_items.txt", "w", encoding="utf-8") as f:
+        f.write(action_items)
+
+    text_to_speech(input_file=translated_file_path, lang=lang)
+    tts_path = translated_file_path.replace(".txt", ".wav")
+
+    return {
+        "transcript": transcript,
+        "summary": summary,
+        "translated": translated,
+        "action_items": action_items,
+        "summary_audio": tts_path
+    }
