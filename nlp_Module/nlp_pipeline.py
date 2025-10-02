@@ -22,6 +22,9 @@ class NLPPipeline:
             model="google/flan-t5-base",
             framework="pt"
         )
+         # A dictionary to cache translation models
+        self.translators = {}
+        print("✅ Core NLP models loaded.")
 
     def summarize_text(self, transcript):
         summary = self.summarizer(transcript, max_length=150, min_length=40, do_sample=False)
@@ -32,11 +35,25 @@ class NLPPipeline:
             return text  # no translation needed
         
         model_name = f'Helsinki-NLP/opus-mt-{src_lang}-{tgt_lang}'
-        tokenizer = MarianTokenizer.from_pretrained(model_name)
-        model = MarianMTModel.from_pretrained(model_name)
-        inputs = tokenizer([text], return_tensors="pt", padding=True)
-        translated = model.generate(**inputs)
-        return tokenizer.decode(translated[0], skip_special_tokens=True)
+
+        # Check if the model is already in our cache
+        if model_name not in self.translators:
+            print(f"Loading translation model: {model_name}...")
+            tokenizer = MarianTokenizer.from_pretrained(model_name)
+            model = MarianMTModel.from_pretrained(model_name)
+            
+            # Save the loaded model and tokenizer in our cache
+            self.translators[model_name] = {"model": model, "tokenizer": tokenizer}
+            print(f"✅ {model_name} loaded and cached.")
+
+            # Use the cached model and tokenizer
+            cached_translator = self.translators[model_name]
+            tokenizer = cached_translator['tokenizer']
+            model = cached_translator['model']
+        
+            inputs = tokenizer([text], return_tensors="pt", padding=True)
+            translated = model.generate(**inputs)
+            return tokenizer.decode(translated[0], skip_special_tokens=True)
 
 
     def extract_action_items(self, text):
