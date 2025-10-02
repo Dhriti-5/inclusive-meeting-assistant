@@ -1,12 +1,15 @@
 # utils/email_utils.py
 
 import smtplib
+import os
 from email.message import EmailMessage
+from dotenv import load_dotenv
+load_dotenv() # Loads variables from .env file
 
 def send_email_with_attachment(receiver_email, subject, body, attachment_path):
     print(" Sending email to", receiver_email)
-    sender_email = "gandhi.dhriti2005@gmail.com"
-    app_password = "pjml pnjt rdhx heye" 
+    sender_email = os.getenv("SENDER_EMAIL")
+    app_password = os.getenv("APP_PASSWORD")
     msg = EmailMessage()
     msg['Subject'] = subject
     msg['From'] = sender_email
