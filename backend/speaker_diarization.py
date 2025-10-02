@@ -4,11 +4,14 @@ import warnings
 import traceback
 from pyannote.audio import Pipeline
 import torch
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # suppress that torchaudio deprecation spam (optional)
 warnings.filterwarnings("ignore", message=".*torchaudio._backend.list_audio_backends.*")
 
-HF_TOKEN = os.getenv("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")  # set this in your environment
+HF_TOKEN = os.getenv("HUGGINGFACE_TOKEN")  # set this in your environment
 PIPELINE = None
 
 def get_pipeline():
