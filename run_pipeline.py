@@ -1,8 +1,8 @@
 import os
 from speech_Module.transcribe_audio import transcribe_audio
-from nlp_Module.summarize_text import summarize_text
-from nlp_Module.translate_text import translate_text
-from tts_module.text_to_speech import save_audio
+from nlp_Module.nlp_pipeline import nlp_pipeline 
+from tts_module.text_to_speech import text_to_speech
+from tts_module.save_audio import save_audio
 
 def run_pipeline(audio_path, output_lang='en'):
     print(" Step 1: Transcribing audio...")
@@ -15,7 +15,7 @@ def run_pipeline(audio_path, output_lang='en'):
     print(f" Transcript saved to {transcript_path}")
 
     print("\n Step 2: Summarizing transcript...")
-    summary = summarize_text(transcript)
+    summary = nlp_pipeline.summarize_text(transcript) 
 
     summary_path = "output/summary.txt"
     with open(summary_path, "w", encoding="utf-8") as f:
@@ -24,7 +24,7 @@ def run_pipeline(audio_path, output_lang='en'):
 
     if output_lang == "hi":
         print("\n Step 3: Translating summary to Hindi...")
-        translated_summary = translate_text(summary, src_lang="en", tgt_lang="hi")
+        translated_summary = nlp_pipeline.translate_text(summary, src_lang="en", tgt_lang="hi") 
         summary_path = "output/summary_hi.txt"
         with open(summary_path, "w", encoding="utf-8") as f:
             f.write(translated_summary)

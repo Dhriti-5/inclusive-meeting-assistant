@@ -2,7 +2,9 @@ import cv2
 import numpy as np
 import mediapipe as mp
 from tensorflow.keras.models import load_model
-import subprocess
+from nlp_Module.nlp_pipeline import nlp_pipeline
+from tts_module.text_to_speech import text_to_speech # Assuming it can take text directly
+# import subprocess
 
 # Load trained model and labels
 model = load_model("sign_lang_Module/sign_model_v1.h5")
@@ -59,15 +61,28 @@ while True:
                     if pred_label == "space":
                         space_count += 1
                         if space_count == 2:
-                            print(f"[INFO] Final sentence: {buffer}")
-                            with open("output/sign_transcript.txt", "w") as f:
-                                f.write(buffer.strip())
-                            print("[INFO] Running assistant pipeline...")
-                            subprocess.call(["python", "nlp_Module/summarize_text.py", "--input", "output/sign_transcript.txt"])
-                            subprocess.call(["python", "nlp_Module/translate_text.py", "--input", "output/summary.txt", "--lang", "hi"])
-                            subprocess.call(["python", "tts_Module/text_to_speech.py", "--input", "output/summary_hi.txt", "--lang", "hi"])
-                            buffer = ""
-                            space_count = 0
+                          final_text = buffer.strip()
+                          print(f"[INFO] Final sentence: {final_text}")
+
+                          if final_text:
+                              print("[INFO] Running assistant pipeline...")
+                      
+                              # 1. Summarize
+                              summary = nlp_pipeline.summarize_text(final_text)
+                              print(f"Summary: {summary}")
+                      
+                              # 2. Translate
+                              translated_summary = nlp_pipeline.translate_text(summary, tgt_lang="hi")
+                              print(f"Translated: {translated_summary}")
+                      
+                              # 3. Text-to-speech (You might need to adjust text_to_speech to accept text directly)
+                              # For now, let's write to a temp file as before
+                              with open("output/temp_summary.txt", "w", encoding="utf-8") as f:
+                                  f.write(translated_summary)
+                              text_to_speech(input_file="output/temp_summary.txt", lang="hi")
+                      
+                          buffer = ""
+                          space_count = 0
                     elif pred_label == "del":
                         buffer = buffer[:-1]
                         space_count = 0
