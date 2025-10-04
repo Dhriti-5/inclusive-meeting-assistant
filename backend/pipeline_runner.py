@@ -11,6 +11,15 @@ from tts_module.text_to_speech import text_to_speech
 from speaker_diarization import diarize_audio
 
 
+# Language mapping for Google Cloud TTS
+LANG_MAP = {
+    "en": "en-US",
+    "hi": "hi-IN",
+    "gu": "gu-IN",
+    "fr": "fr-FR",
+    # Add more if needed
+}
+
 def run_pipeline_from_audio(audio_path, lang="en"):
     """
     Full pipeline: Audio → Diarization → Transcript → Summary → Translation → Action Items → TTS
@@ -73,9 +82,11 @@ def run_pipeline_from_audio(audio_path, lang="en"):
     with open("output/action_items.txt", "w", encoding="utf-8") as f:
         f.write(action_items)
 
-    # --- Step 5: TTS for translated summary ---
-    text_to_speech(input_file=translated_file_path, lang=lang)
-    tts_path = translated_file_path.replace(".txt", ".wav")
+     # --- Step 5: TTS for translated summary ---
+    gcp_lang = LANG_MAP.get(lang, "en-US")
+    tts_path = f"output/summary_{lang}.mp3"
+    text_to_speech(translated, tts_path, lang=gcp_lang)
+
 
     return {
         "transcript": transcript,
@@ -107,9 +118,12 @@ def run_pipeline_from_transcript(lang="en"):
     action_items = nlp_pipeline.extract_action_items(summary)
     with open("output/action_items.txt", "w", encoding="utf-8") as f:
         f.write(action_items)
+        
+    gcp_lang = LANG_MAP.get(lang, "en-US")
+    tts_path = f"output/summary_{lang}.mp3"
+    text_to_speech(translated, tts_path, lang=gcp_lang)
+   
 
-    text_to_speech(input_file=translated_file_path, lang=lang)
-    tts_path = translated_file_path.replace(".txt", ".wav")
 
     return {
         "transcript": transcript,

@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 import mediapipe as mp
+import requests
 from tensorflow.keras.models import load_model
 from nlp_Module.nlp_pipeline import nlp_pipeline
 from tts_module.text_to_speech import text_to_speech # Assuming it can take text directly
@@ -23,6 +24,10 @@ last_label = ""
 space_count = 0
 cooldown = 15
 counter = 0
+
+BACKEND_SIGN_URL = "http://127.0.0.1:8000/process-sign/"
+# For this script, we'll hardcode the email. In a real app, you'd have a login.
+USER_EMAIL = "gandhi.dhriti2005@gmail.com" 
 
 print("[INFO] Starting real-time sign detection...")
 
@@ -59,30 +64,39 @@ while True:
                 counter += 1
                 if counter > cooldown:
                     if pred_label == "space":
-                        space_count += 1
-                        if space_count == 2:
-                          final_text = buffer.strip()
-                          print(f"[INFO] Final sentence: {final_text}")
-
-                          if final_text:
-                              print("[INFO] Running assistant pipeline...")
-                      
-                              # 1. Summarize
-                              summary = nlp_pipeline.summarize_text(final_text)
-                              print(f"Summary: {summary}")
-                      
-                              # 2. Translate
-                              translated_summary = nlp_pipeline.translate_text(summary, tgt_lang="hi")
-                              print(f"Translated: {translated_summary}")
-                      
-                              # 3. Text-to-speech (You might need to adjust text_to_speech to accept text directly)
-                              # For now, let's write to a temp file as before
-                              with open("output/temp_summary.txt", "w", encoding="utf-8") as f:
-                                  f.write(translated_summary)
-                              text_to_speech(input_file="output/temp_summary.txt", lang="hi")
-                      
-                          buffer = ""
-                          space_count = 0
+                       # Add a single space to the buffer
+                       if last_label != "space": # Prevents adding multiple spaces
+                           buffer += " "
+                       space_count += 1
+                       if space_count >= 2: # Triggered by holding 'space' or signing it twice
+                           final_text = buffer.strip()
+                           print(f"[INFO] Final sentence detected: {final_text}")
+                           
+                           if final_text:
+                               print("[INFO] Sending text to backend for processing...")
+                               try:
+                                   # Prepare the data payload for the API
+                                   payload = {
+                                       "sign_text": final_text,
+                                       "lang": "en",
+                                       "email": USER_EMAIL
+                                   }
+                                   
+                                   # Make the POST request to your FastAPI backend
+                                   response = requests.post(BACKEND_SIGN_URL, data=payload)
+                                   
+                                   if response.status_code == 200:
+                                       print("✅ Backend processed the text successfully!")
+                                       print("📬 Check your email for the summary.")
+                                   else:
+                                       print(f"❌ Error from backend: {response.status_code} - {response.text}")
+                   
+                               except requests.exceptions.RequestException as e:
+                                   print(f"❌ Could not connect to the backend. Is it running? Error: {e}")
+                           
+                           # Reset for the next sentence
+                           buffer = ""
+                           space_count = 0
                     elif pred_label == "del":
                         buffer = buffer[:-1]
                         space_count = 0
