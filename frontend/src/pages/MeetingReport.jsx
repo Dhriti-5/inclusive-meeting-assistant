@@ -56,9 +56,25 @@ const MeetingReport = () => {
     }
   }
 
-  const handleSendEmail = () => {
-    // TODO: Implement email functionality
-    alert('Email functionality coming soon!')
+  const handleSendEmail = async () => {
+    const email = prompt('Enter email address to send the meeting summary:')
+    if (!email) return
+    
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(email)) {
+      alert('Please enter a valid email address')
+      return
+    }
+    
+    try {
+      await meetingAPI.sendEmail(meetingId, email)
+      alert(`Meeting summary sent to ${email} successfully!`)
+    } catch (err) {
+      console.error('Failed to send email:', err)
+      const errorMessage = err.response?.data?.error || 'Failed to send email. Please try again.'
+      alert(errorMessage)
+    }
   }
 
   if (isLoading) {

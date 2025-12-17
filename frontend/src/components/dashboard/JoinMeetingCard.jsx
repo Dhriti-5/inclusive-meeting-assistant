@@ -28,13 +28,15 @@ const JoinMeetingCard = () => {
 
     setIsLoading(true)
     try {
-      const response = await meetingAPI.joinMeeting(url)
-      const meetingId = response.data.meetingId || extractMeetingId(url)
+      // Create a new meeting session
+      const response = await meetingAPI.joinMeeting('Live Meeting', url)
+      const meetingId = response.data.meeting_id
       
       // Navigate to live meeting page
       navigate(`/meeting/${meetingId}`)
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to join meeting. Please try again.')
+      console.error('Failed to join meeting:', err)
+      setError(err.response?.data?.error || 'Failed to join meeting. Please try again.')
     } finally {
       setIsLoading(false)
     }

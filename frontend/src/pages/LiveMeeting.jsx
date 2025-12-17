@@ -1,12 +1,13 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { PhoneOff, Settings, Maximize2 } from 'lucide-react'
+import { PhoneOff, Settings, Maximize2, Upload } from 'lucide-react'
 import Button from '@/components/shared/Button'
 import TranscriptFeed from '@/components/live-session/TranscriptFeed'
 import SignLanguageCam from '@/components/live-session/SignLanguageCam'
 import ActionItemPanel from '@/components/live-session/ActionItemPanel'
 import LiveSummary from '@/components/live-session/LiveSummary'
 import Loader from '@/components/shared/Loader'
+import useWebSocket from '@/hooks/useWebSocket'
 import { meetingAPI } from '@/services/api'
 
 const LiveMeeting = () => {
@@ -19,44 +20,120 @@ const LiveMeeting = () => {
   const [summaryPoints, setSummaryPoints] = useState([])
   const [detectedSign, setDetectedSign] = useState(null)
   const [meetingStatus, setMeetingStatus] = useState('connecting')
+  const [isUploading, setIsUploading] = useState(false)
+  const fileInputRef = useRef(null)
+
+  // Get JWT token from localStorage (for WebSocket authentication)
+  const getAuthToken = () => {
+    // For now, we'll use a demo token. In production, this would come from login
+    // Uncomment when auth is fully implemented:
+    // return localStorage.getItem('token')
+    return 'demo-token'
+  }
+
+  // WebSocket connection for real-time updates
+  const { connectionStatus, isConnected } = useWebSocket(meetingId, getAuthToken(), {
+    onConnected: () => {
+      console.log('WebSocket connected')
+      setMeetingStatus('connected')
+      setIsLoading(false)
+    },
+    onTranscript: (segment) => {
+      console.log('Received transcript segment:', segment)
+      setTranscripts(prev => [...prev, segment])
+    },
+    onStatus: (status, details) => {
+      console.log('Status update:', status, details)
+      setMeetingStatus(status)
+      
+      // Handle processing stages
+      if (details?.stage) {
+        console.log(`Processing stage: ${details.stage}`)
+      }
+    },
+    onSummary: (summary, actionItemsData) => {
+      console.log('Received summary and action items')
+      
+      if (summary) {
+        // Parse summary points (assuming they come as line-separated text)
+        const points = summary.split('\n').filter(p => p.trim())
+        setSummaryPoints(points)
+      }
+      
+      if (actionItemsData) {
+        setActionItems(actionItemsData)
+      }
+    },
+    onError: (error) => {
+      console.error('WebSocket error:', error)
+      setMeetingStatus('error')
+    }
+  })
 
   useEffect(() => {
-    initializeMeeting()
-    const interval = setInterval(fetchLiveData, 2000) // Poll every 2 seconds
-    return () => clearInterval(interval)
-  }, [meetingId])
+    // Initialize meeting status on mount
+    const initializeMeeting = async () => {
+      try {
+        setIsLoading(true)
+        const response = await meetingAPI.getMeetingStatus(meetingId)
+        setMeetingStatus(response.data.status)
+        
+        // Load existing transcripts and action items
+        const transcriptRes = await meetingAPI.getLiveTranscript(meetingId)
+        if (transcriptRes.data.transcript) {
+          setTranscripts(transcriptRes.data.transcript)
+        }
 
-  const initializeMeeting = async () => {
+        const actionsRes = await meetingAPI.getActionItems(meetingId)
+        if (actionsRes.data.action_items) {
+          setActionItems(actionsRes.data.action_items)
+        }
+      } catch (err) {
+        console.error('Failed to initialize meeting:', err)
+      } finally {
+        // Loading will be set to false by WebSocket onConnected callback
+        // or after initial data fetch
+        if (!isConnected) {
+          setIsLoading(false)
+        }
+      }
+    }
+
+    initializeMeeting()
+  }, [meetingId, isConnected])
+
+  const handleFileUpload = async (event) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    // Check if it's an audio file
+    if (!file.type.startsWith('audio/')) {
+      alert('Please select an audio file')
+      return
+    }
+
+    setIsUploading(true)
+    setMeetingStatus('processing')
+    
     try {
-      setIsLoading(true)
-      const response = await meetingAPI.getMeetingStatus(meetingId)
-      setMeetingStatus(response.data.status)
+      const response = await meetingAPI.uploadAudio(meetingId, file, 'en')
+      console.log('Audio uploaded successfully:', response.data)
+      
+      // WebSocket will handle real-time updates during processing
+      // No need to poll - updates will come via onTranscript, onStatus, onSummary callbacks
+      
+      alert('Audio uploaded! Processing in real-time via WebSocket.')
     } catch (err) {
-      console.error('Failed to initialize meeting:', err)
+      console.error('Failed to upload audio:', err)
+      alert('Failed to process audio. Please try again.')
+      setMeetingStatus('error')
     } finally {
-      setIsLoading(false)
+      setIsUploading(false)
     }
   }
 
-  const fetchLiveData = async () => {
-    try {
-      // Fetch transcript updates
-      const transcriptRes = await meetingAPI.getLiveTranscript(meetingId)
-      if (transcriptRes.data.transcripts) {
-        setTranscripts(transcriptRes.data.transcripts)
-      }
-
-      // Fetch action items
-      const actionsRes = await meetingAPI.getActionItems(meetingId)
-      if (actionsRes.data.actions) {
-        setActionItems(actionsRes.data.actions)
-      }
-
-      // Update summary points (mock for now)
-      // In production, this would come from the backend
-    } catch (err) {
-      console.error('Failed to fetch live data:', err)
-    }
+  const handleUploadClick = () => {
+    fileInputRef.current?.click()
   }
 
   const handleEndMeeting = async () => {
@@ -105,13 +182,37 @@ const LiveMeeting = () => {
         <div className="max-w-[1920px] mx-auto flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
-              <div className="w-3 h-3 bg-red-500 rounded-full recording-pulse"></div>
-              <span className="text-white font-medium">Recording in Progress</span>
+              <div className={`w-3 h-3 rounded-full ${
+                isConnected ? 'bg-green-500' : 'bg-yellow-500 animate-pulse'
+              }`}></div>
+              <span className="text-white font-medium">
+                {isConnected ? 'Live (WebSocket)' : 'Connecting...'}
+              </span>
             </div>
             <span className="text-gray-400 text-sm">Meeting ID: {meetingId}</span>
+            <span className="text-gray-500 text-xs">
+              Status: {meetingStatus}
+            </span>
           </div>
 
           <div className="flex items-center gap-3">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="audio/*"
+              onChange={handleFileUpload}
+              className="hidden"
+            />
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={handleUploadClick}
+              isLoading={isUploading}
+              leftIcon={<Upload className="w-4 h-4" />}
+              className="text-white"
+            >
+              {isUploading ? 'Processing...' : 'Upload Audio'}
+            </Button>
             <Button
               variant="ghost"
               size="sm"

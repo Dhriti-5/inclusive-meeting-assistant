@@ -10,42 +10,29 @@ st.set_page_config(
     page_icon="🤖",
     layout="wide"
 )
-
-# --- Backend API Configuration ---
 # This is the URL where your FastAPI backend is running
 BACKEND_URL = "http://127.0.0.1:8000/process-audio/"
 
-# --- UI Components ---
-st.title("Inclusive Meeting Assistant")
-st.write("""
-    Welcome! This tool transcribes, summarizes, and extracts action items from your meeting audio.
-    Upload an audio file and enter your email to receive a detailed PDF summary.
-""")
+st.title("🚀 Inclusive Meeting Assistant")
+st.write("A meeting tool designed for everyone. Process past audio recordings or start a live, inclusive session.")
 
-st.divider()
+# --- Create the Tabs ---
+tab1, tab2 = st.tabs(["📁 Process Audio File", "📹 Live Sign Language Session"])
 
-# Create two columns for a cleaner layout
-col1, col2 = st.columns(2)
-
-with col1:
-    st.header("1. Upload Your Meeting Audio")
-    # File uploader widget
+# --- Tab 1: Audio File Processing ---
+with tab1:
+    st.header("Analyze a Recorded Meeting")
+    
+    # Your existing UI code for audio processing goes here
     uploaded_file = st.file_uploader(
         "Choose an audio file (.wav, .mp3, .m4a)", 
-        type=["wav", "mp3", "m4a"]
+        type=["wav", "mp3", "m4a"],
+        key="audio_uploader"
     )
-    
-    st.header("2. Enter Your Email")
-    # Text input widget for email
-    email = st.text_input("We'll send the summary PDF to this address.")
+    email = st.text_input("Enter your email for the PDF report.", key="audio_email")
 
-with col2:
-    st.header("3. Process and Get Insights")
-    st.write("Click the button below to start the analysis.")
-    
-    # The "Process" button
-    if st.button("Process Meeting", type="primary", use_container_width=True):
-        # --- Input Validation ---
+    if st.button("Process Audio", type="primary", use_container_width=True):
+         # --- Input Validation ---
         if uploaded_file is None:
             st.error("⚠️ Please upload an audio file first.")
         elif not email:
@@ -59,7 +46,7 @@ with col2:
                     data = {'email': email, 'lang': 'en'} # Language is hardcoded to 'en' for now
                     
                     # Make the request to your FastAPI backend
-                    response = requests.post(BACKEND_URL, files=files, data=data)
+                    response = requests.post(BACKEND_URL, files=files, data=data, timeout=300)
                     
                     # --- Display Results ---
                     if response.status_code == 200:
@@ -80,3 +67,15 @@ with col2:
 
                 except requests.exceptions.RequestException as e:
                     st.error(f"❌ Could not connect to the backend. Please ensure it's running. Error: {e}")
+
+
+
+st.divider()
+
+# --- Tab 2: Live Sign Language Session ---
+with tab2:
+    st.header("Start a Live Session")
+    st.write("This feature will use your webcam to recognize ASL finger-spelling in real-time.")
+    
+    # We will add the full webcam logic in the next step.
+    st.info("Preparing the live session module...")

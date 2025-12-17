@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -12,9 +12,11 @@ const api = axios.create({
 // Request interceptor for adding auth tokens if needed
 api.interceptors.request.use(
   (config) => {
-    // Add auth token here if needed
-    // const token = localStorage.getItem('token')
-    // if (token) config.headers.Authorization = `Bearer ${token}`
+    // Add auth token here when authentication is fully implemented
+    const token = localStorage.getItem('token')
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`
+    }
     return config
   },
   (error) => Promise.reject(error)
@@ -30,29 +32,48 @@ api.interceptors.response.use(
 )
 
 export const meetingAPI = {
-  // Join a meeting
-  joinMeeting: (meetingUrl) => api.post('/meetings/join', { url: meetingUrl }),
+  // Join a meeting (create new session)
+  joinMeeting: (meetingName = 'Untitled Meeting', meetingUrl = null) => 
+    api.post('/api/meetings/join', { name: meetingName, url: meetingUrl }),
+  
+  // Upload audio file for processing
+  uploadAudio: (meetingId, audioFile, language = 'en') => {
+    const formData = new FormData()
+    formData.append('audio', audioFile)
+    formData.append('lang', language)
+    
+    return api.post(`/api/meetings/${meetingId}/upload-audio`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    })
+  },
   
   // Get meeting status
-  getMeetingStatus: (meetingId) => api.get(`/meetings/${meetingId}/status`),
+  getMeetingStatus: (meetingId) => api.get(`/api/meetings/${meetingId}/status`),
   
   // Get live transcript
-  getLiveTranscript: (meetingId) => api.get(`/meetings/${meetingId}/transcript`),
+  getLiveTranscript: (meetingId) => api.get(`/api/meetings/${meetingId}/transcript`),
   
   // Get meeting history
-  getMeetingHistory: () => api.get('/meetings/history'),
+  getMeetingHistory: () => api.get('/api/meetings/history'),
   
   // Get meeting report
-  getMeetingReport: (meetingId) => api.get(`/meetings/${meetingId}/report`),
+  getMeetingReport: (meetingId) => api.get(`/api/meetings/${meetingId}/report`),
   
   // End meeting
-  endMeeting: (meetingId) => api.post(`/meetings/${meetingId}/end`),
+  endMeeting: (meetingId) => api.post(`/api/meetings/${meetingId}/end`),
   
   // Download PDF
-  downloadPDF: (meetingId) => api.get(`/meetings/${meetingId}/pdf`, { responseType: 'blob' }),
+  downloadPDF: (meetingId) => api.get(`/api/meetings/${meetingId}/pdf`, { responseType: 'blob' }),
   
   // Get action items
-  getActionItems: (meetingId) => api.get(`/meetings/${meetingId}/actions`),
+  getActionItems: (meetingId) => api.get(`/api/meetings/${meetingId}/actions`),
+  
+  // Send meeting summary via email
+  sendEmail: (meetingId, email) => api.post(`/api/meetings/${meetingId}/email`, null, {
+    params: { email }
+  }),
 }
 
 export default api
