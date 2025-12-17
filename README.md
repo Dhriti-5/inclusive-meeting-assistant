@@ -49,6 +49,41 @@ This project integrates **speech recognition, sign language translation, summari
 - **Output:** Timestamps with speaker labels (`SPEAKER_00`, `SPEAKER_01`, …)
 - **Next:** Merge diarization with transcripts → speaker-attributed summaries
 
+### **9. ⚡ Real-Time WebSocket Updates (Phase 3)**
+- **Problem:** Eliminated inefficient polling (60 requests/minute)
+- **Solution:** WebSocket connections for instant updates
+- **Benefits:**
+  - 97% reduction in network requests
+  - 20x faster updates (<100ms vs 0-2000ms)
+  - Real-time processing status (diarization, transcription, alignment)
+  - Auto-reconnection with exponential backoff
+- **Implementation:**
+  - Backend: WebSocket manager + broadcasting during audio processing
+  - Frontend: Custom `useWebSocket` React hook
+  - Connection status indicator in UI
+- **See:** `PHASE3_SUMMARY.md`, `PHASE3_QUICKSTART.md` for details
+
+### **10. 🤖 Automated Meeting Bot (Phase 4) - THE KILLER FEATURE**
+- **Problem:** Manual meeting joining and transcription setup
+- **Solution:** Automated bot that joins Google Meet and captures audio
+- **Features:**
+  - ✅ Automated Google Meet joining (Puppeteer)
+  - ✅ Real-time audio capture (puppeteer-stream)
+  - ✅ Live transcription streaming (Whisper + WebSocket)
+  - ✅ Browser automation with intelligent join detection
+  - ✅ Headless/visible mode for debugging
+- **Architecture:**
+  - Bot Engine (Node.js) → Audio Capture → WebSocket → Backend (Python)
+  - Backend processes audio with Whisper → Broadcasts to Frontend
+  - Seamless integration with Phase 3 WebSocket infrastructure
+- **Usage:**
+  ```bash
+  cd bot_engine
+  npm install
+  npm start
+  ```
+- **See:** `PHASE4_QUICKSTART.md`, `bot_engine/README.md` for complete guide
+
 ---
 
 ## **🏗 Project Structure**
@@ -56,7 +91,9 @@ This project integrates **speech recognition, sign language translation, summari
 ```
 inclusive-meeting-assistant/
 ├── backend/
-│   ├── main.py                  # FastAPI entrypoint
+│   ├── main.py                  # FastAPI entrypoint + WebSocket endpoints
+│   ├── bot_audio_processor.py   # Bot audio processing & Whisper integration
+│   ├── websocket_manager.py     # WebSocket connection management
 │   ├── pipeline_runner.py       # Orchestrates NLP pipeline
 │   ├── nlp_module/
 │   │   ├── nlp_pipeline.py      # Summarization, Action items, Translation
@@ -68,8 +105,17 @@ inclusive-meeting-assistant/
 │   ├── speaker_diarization.py   # Pyannote diarization pipeline
 │   └── output/                  # Transcripts, summaries, etc.
 │
+├── bot_engine/                  # Meeting Bot (Phase 4)
+│   ├── bot_engine.js            # Puppeteer automation + audio capture
+│   ├── package.json             # Node.js dependencies
+│   ├── .env.example             # Configuration template
+│   └── README.md                # Bot setup guide
+│
 ├── frontend/                    # React.js (UI for meetings)
 ├── test_all_features.py         # Test script to verify all features
+├── test_bot_audio.py            # Bot audio processing tests
+├── setup_bot.bat / .sh          # Bot setup scripts
+├── start_bot.bat / .sh          # Bot start scripts
 └── README.md
 ```
 
@@ -124,10 +170,41 @@ python test_all_features.py
 
 ---
 
-## **🗺 Roadmap (Next Features)**
+## **🗺 Roadmap & Completed Phases**
 
+### **✅ Completed**
+- **Phase 1:** Core NLP features (summarization, action items, translation, TTS)
+- **Phase 2:** MongoDB + JWT Authentication ([docs](PHASE2_SUMMARY.md))
+- **Phase 3:** WebSocket real-time updates ([docs](PHASE3_SUMMARY.md))
+- **Phase 4:** Automated Meeting Bot ([docs](PHASE4_SUMMARY.md)) 🎉
+
+### **🔜 Upcoming**
+- **Phase 5:** Full frontend integration with authentication
+- **Phase 6:** Collaborative features (multi-user editing)
+- **Phase 7:** Support for Zoom, Microsoft Teams
 - Merge diarization output with transcript → **speaker-attributed summaries**
 - Topic segmentation → break meetings into themes
 - Export options (PDF, Notion, etc.)
 - Browser extension (Zoom / Meet integration)
 - Real-time dashboard with speaker labels & sign language overlay
+
+## **📚 Documentation**
+
+### Phase 2: Authentication & Database
+- [PHASE2_SUMMARY.md](PHASE2_SUMMARY.md) - Complete overview
+- [PHASE2_QUICKSTART.md](PHASE2_QUICKSTART.md) - Quick start guide
+- [PHASE2_IMPLEMENTATION.md](PHASE2_IMPLEMENTATION.md) - Technical details
+- [PHASE2_ARCHITECTURE.md](PHASE2_ARCHITECTURE.md) - Architecture diagram
+
+### Phase 3: WebSocket Real-Time
+- [PHASE3_SUMMARY.md](PHASE3_SUMMARY.md) - Complete overview
+- [PHASE3_QUICKSTART.md](PHASE3_QUICKSTART.md) - Testing guide
+- [PHASE3_COMPARISON.md](PHASE3_COMPARISON.md) - Before/after analysis
+- [PHASE3_WEBSOCKET_INTEGRATION.md](PHASE3_WEBSOCKET_INTEGRATION.md) - Technical guide
+
+### Phase 4: Meeting Bot 🤖
+- [PHASE4_INDEX.md](PHASE4_INDEX.md) - **START HERE** - Complete documentation index
+- [PHASE4_QUICKSTART.md](PHASE4_QUICKSTART.md) - 5-minute setup guide
+- [bot_engine/README.md](bot_engine/README.md) - Comprehensive bot guide
+- [PHASE4_SUMMARY.md](PHASE4_SUMMARY.md) - Technical architecture & implementation
+- [PHASE4_CHECKLIST.md](PHASE4_CHECKLIST.md) - Development & deployment checklist

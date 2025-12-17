@@ -1,0 +1,25 @@
+{
+  "name": "gmeet-bot-engine",
+  "version": "1.0.0",
+  "description": "Automated Google Meet bot for audio capture and transcription",
+  "main": "bot_engine.js",
+  "type": "module",
+  "scripts": {
+    "start": "node bot_engine.js",
+    "dev": "node bot_engine.js"
+  },
+  "keywords": [
+    "google-meet",
+    "puppeteer",
+    "bot",
+    "audio-capture"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "puppeteer": "^24.15.0",
+    "puppeteer-stream": "^3.0.5",
+    "ws": "^8.14.2",
+    "dotenv": "^16.3.1"
+  }
+}
