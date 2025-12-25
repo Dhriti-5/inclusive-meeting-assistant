@@ -4,6 +4,7 @@ import WebSocket from 'ws';
 import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
+import fetch from 'node-fetch';
 
 dotenv.config();
 
@@ -14,6 +15,7 @@ class GoogleMeetBot {
     this.ws = null;
     this.audioStream = null;
     this.isRecording = false;
+    this.signLanguagePoller = null;  // For polling sign language commands
     
     // Configuration
     this.config = {
@@ -21,8 +23,10 @@ class GoogleMeetBot {
       password: process.env.GOOGLE_PASSWORD,
       meetingUrl: process.env.MEETING_URL,
       backendWsUrl: process.env.BACKEND_WS_URL || 'ws://localhost:8000/ws/bot-audio',
+      backendApiUrl: process.env.BACKEND_API_URL || 'http://localhost:8000',
       headless: process.env.HEADLESS === 'true',
-      audioSampleRate: parseInt(process.env.AUDIO_SAMPLE_RATE) || 16000
+      audioSampleRate: parseInt(process.env.AUDIO_SAMPLE_RATE) || 16000,
+      signLanguagePollingInterval: parseInt(process.env.SIGN_POLLING_INTERVAL) || 1000  // Check every 1 second
     };
   }
 
@@ -329,10 +333,112 @@ class GoogleMeetBot {
     }
   }
 
+  /**
+   * PHASE 4: Sign Language Bridge
+   * Poll the backend for sign language commands and type them in chat
+   */
+  async startSignLanguagePoller() {
+    console.log('🤟 Starting Sign Language Command Poller...');
+    console.log(`   Polling interval: ${this.config.signLanguagePollingInterval}ms`);
+    
+    this.signLanguagePoller = setInterval(async () => {
+      try {
+        // Check backend for new sign language commands
+        const response = await fetch(`${this.config.backendApiUrl}/api/get-latest-command`);
+        const data = await response.json();
+        
+        if (data.command === 'type' && data.text) {
+          console.log(`✍️ Sign Language Command: ${data.text}`);
+          await this.sendChatMessage(data.text);
+        }
+        
+      } catch (error) {
+        // Silently ignore errors (backend might be restarting)
+        // Uncomment for debugging: console.error('Sign language poller error:', error.message);
+      }
+    }, this.config.signLanguagePollingInterval);
+  }
+
+  /**
+   * Send a message to Google Meet chat
+   */
+  async sendChatMessage(message) {
+    try {
+      // Wait a moment to ensure page is ready
+      await this.page.waitForTimeout(500);
+      
+      // Try to find and click the chat button (if chat isn't already open)
+      // Google Meet selectors can change - these are common patterns
+      const chatButtonSelectors = [
+        'button[aria-label*="Chat"]',
+        'button[aria-label*="chat"]',
+        '[data-tooltip*="Chat"]',
+        'button[jsname="A5il2e"]'  // Google Meet internal name
+      ];
+      
+      for (const selector of chatButtonSelectors) {
+        try {
+          const chatButton = await this.page.$(selector);
+          if (chatButton) {
+            // Check if chat is already open by looking for the input field
+            const chatInput = await this.page.$('textarea[aria-label*="message"]');
+            
+            if (!chatInput) {
+              // Chat not open, click to open it
+              await chatButton.click();
+              await this.page.waitForTimeout(1000); // Wait for chat to open
+              console.log('   📂 Opened chat panel');
+            }
+            break;
+          }
+        } catch (e) {
+          // Try next selector
+          continue;
+        }
+      }
+      
+      // Find the chat input textarea
+      const textareaSelectors = [
+        'textarea[aria-label*="message"]',
+        'textarea[placeholder*="message"]',
+        'textarea[jsname="YPqjbf"]'  // Google Meet internal name
+      ];
+      
+      let textarea = null;
+      for (const selector of textareaSelectors) {
+        textarea = await this.page.$(selector);
+        if (textarea) break;
+      }
+      
+      if (textarea) {
+        // Type the message
+        await textarea.click();
+        await textarea.type(message, { delay: 50 });
+        
+        // Press Enter to send
+        await this.page.keyboard.press('Enter');
+        
+        console.log(`   ✅ Message sent to chat: "${message}"`);
+      } else {
+        console.log('   ⚠️ Could not find chat input field');
+      }
+      
+    } catch (error) {
+      console.error('   ❌ Error sending chat message:', error.message);
+    }
+  }
+
   async stop() {
     console.log('🛑 Stopping bot...');
     
     this.isRecording = false;
+    
+    // Stop sign language poller
+    if (this.signLanguagePoller) {
+      clearInterval(this.signLanguagePoller);
+      this.signLanguagePoller = null;
+      console.log('✅ Sign language poller stopped');
+    }
     
     if (this.audioStream) {
       this.audioStream.destroy();
@@ -360,6 +466,12 @@ class GoogleMeetBot {
       await this.joinMeeting();
       await this.connectWebSocket();
       await this.startAudioCapture();
+      
+      // PHASE 4: Start sign language command poller
+      await this.startSignLanguagePoller();
+      console.log('🎉 Bot is fully operational!');
+      console.log('   - Audio transcription: ✅');
+      console.log('   - Sign language bridge: ✅');
       
       // Keep process alive
       process.on('SIGINT', async () => {

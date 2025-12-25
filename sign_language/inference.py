@@ -3,6 +3,9 @@ import numpy as np
 import os
 import mediapipe as mp
 from tensorflow.keras.models import load_model
+import requests
+import time
+from datetime import datetime
 
 # --- LOAD MODEL ---
 try:
@@ -50,12 +53,19 @@ sentence = []
 predictions = []
 threshold = 0.8 # Confidence must be > 80% to trigger
 
+# Backend API configuration
+BACKEND_URL = "http://localhost:8000"
+last_sent_word = None
+last_sent_time = 0
+SEND_COOLDOWN = 3  # Don't send same word within 3 seconds
+
 cap = cv2.VideoCapture(0)
 if not cap.isOpened():
     print("❌ Error: Cannot open webcam. Please check if camera is connected.")
     exit(1)
 
 print("✅ Webcam opened successfully!")
+print("🔗 Connected to backend at:", BACKEND_URL)
 # Set standard meeting resolution
 cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
@@ -88,12 +98,53 @@ with mp_holistic.Holistic(min_detection_confidence=0.5, min_tracking_confidence=
             # Stabilization: Only predict if the last 10 frames agree (prevents flickering)
             if np.unique(predictions[-10:])[0]==np.argmax(res): 
                 if res[np.argmax(res)] > threshold: 
+                    current_word = actions[np.argmax(res)]
+                    current_confidence = float(res[np.argmax(res)])
                     
                     if len(sentence) > 0: 
-                        if actions[np.argmax(res)] != sentence[-1]:
-                            sentence.append(actions[np.argmax(res)])
+                        if current_word != sentence[-1]:
+                            sentence.append(current_word)
+                            
+                            # --- PHASE 4: SEND TO BACKEND API ---
+                            current_time = time.time()
+                            # Only send if: not idle, not recently sent, and above cooldown period
+                            if (current_word != "idle" and 
+                                (last_sent_word != current_word or 
+                                 current_time - last_sent_time > SEND_COOLDOWN)):
+                                
+                                try:
+                                    payload = {
+                                        "word": current_word,
+                                        "confidence": current_confidence
+                                    }
+                                    response = requests.post(
+                                        f"{BACKEND_URL}/api/sign-detected",
+                                        json=payload,
+                                        timeout=2  # Don't block if backend is slow
+                                    )
+                                    
+                                    if response.status_code == 200:
+                                        result = response.json()
+                                        if result.get("status") == "success":
+                                            print(f"🚀 SENT TO BOT: {current_word} (confidence: {current_confidence:.2f})")
+                                            print(f"   Message: {result.get('message')}")
+                                            last_sent_word = current_word
+                                            last_sent_time = current_time
+                                        else:
+                                            print(f"ℹ️ Ignored: {result.get('reason')}")
+                                    else:
+                                        print(f"⚠️ API returned status {response.status_code}")
+                                        
+                                except requests.exceptions.ConnectionError:
+                                    print(f"⚠️ Backend not reachable at {BACKEND_URL}")
+                                except requests.exceptions.Timeout:
+                                    print(f"⚠️ Backend request timed out")
+                                except Exception as e:
+                                    print(f"⚠️ API Error: {e}")
+                            # -----------------------------------------
+                            
                     else:
-                        sentence.append(actions[np.argmax(res)])
+                        sentence.append(current_word)
 
             if len(sentence) > 1: 
                 sentence = sentence[-1:]

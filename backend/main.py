@@ -59,6 +59,18 @@ from models import (
 from websocket_manager import manager
 from bot_audio_processor import bot_manager
 
+# Sign Language Integration Models
+class SignMessage(BaseModel):
+    word: str
+    confidence: float
+
+class SignCommand(BaseModel):
+    command: str
+    text: Optional[str] = None
+
+# Global queue for sign language commands (scalable: use Redis in production)
+sign_command_queue: List[str] = []
+
 app = FastAPI()
 
 # Add CORS middleware
@@ -1071,6 +1083,104 @@ Team Inclusive AI
 
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+# ====== SIGN LANGUAGE BRIDGE ENDPOINTS (PHASE 4) ======
+
+@app.post("/api/sign-detected")
+async def receive_sign_detection(sign: SignMessage):
+    """
+    Receive sign language detection from inference.py
+    Converts detected signs into chat messages for the bot
+    """
+    print(f"🤟 Sign Detected: {sign.word} (confidence: {sign.confidence:.2f})")
+    
+    # Ignore low confidence and idle state
+    if sign.confidence < 0.8 or sign.word == "idle":
+        return {"status": "ignored", "reason": "Low confidence or idle state"}
+    
+    # Map sign words to meaningful chat messages
+    message_map = {
+        "question": "[Sign Language] 🙋 Participant has a question",
+        "hello": "[Sign Language] 👋 Participant says Hello!",
+        "yes": "[Sign Language] ✅ Participant agrees",
+        "no": "[Sign Language] ❌ Participant disagrees",
+        "thanks": "[Sign Language] 🙏 Participant says Thank You"
+    }
+    
+    message = message_map.get(sign.word)
+    
+    if message:
+        # Add to command queue for bot to pick up
+        sign_command_queue.append(message)
+        print(f"✅ Message queued for bot: {message}")
+        
+        # Broadcast to WebSocket clients (optional: for real-time UI updates)
+        await websocket_manager.broadcast_to_meeting(
+            "global",  # or specific meeting_id if available
+            {
+                "type": "sign_detected",
+                "word": sign.word,
+                "message": message,
+                "confidence": sign.confidence,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+        )
+        
+        return {
+            "status": "success",
+            "message": message,
+            "queued": True
+        }
+    
+    return {
+        "status": "ignored",
+        "reason": f"Unknown sign word: {sign.word}"
+    }
+
+
+@app.get("/api/get-latest-command")
+async def get_latest_sign_command():
+    """
+    Bot polls this endpoint to check for new sign language commands
+    Returns the oldest command in queue (FIFO)
+    """
+    if sign_command_queue:
+        # Pop the first message from queue
+        message = sign_command_queue.pop(0)
+        return {
+            "command": "type",
+            "text": message
+        }
+    
+    return {
+        "command": "none"
+    }
+
+
+@app.get("/api/sign-queue-status")
+async def get_sign_queue_status():
+    """
+    Debug endpoint to check queue status
+    """
+    return {
+        "queue_length": len(sign_command_queue),
+        "pending_messages": sign_command_queue[:5]  # Show first 5
+    }
+
+
+@app.post("/api/clear-sign-queue")
+async def clear_sign_queue():
+    """
+    Admin endpoint to clear the queue if needed
+    """
+    global sign_command_queue
+    cleared_count = len(sign_command_queue)
+    sign_command_queue.clear()
+    return {
+        "status": "cleared",
+        "messages_cleared": cleared_count
+    }
 
 
 if __name__ == "__main__":
