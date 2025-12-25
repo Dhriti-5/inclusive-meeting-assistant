@@ -22,8 +22,15 @@ export const useWebSocket = (meetingId, token, options = {}) => {
   const maxReconnectAttempts = 5;
 
   const connect = useCallback(() => {
-    if (!meetingId || !token) {
-      console.warn('Cannot connect WebSocket: missing meetingId or token');
+    if (!meetingId) {
+      console.warn('Cannot connect WebSocket: missing meetingId');
+      return;
+    }
+
+    // Get real JWT token from localStorage
+    const authToken = token || localStorage.getItem('token');
+    if (!authToken) {
+      console.warn('Cannot connect WebSocket: no authentication token');
       return;
     }
 
@@ -38,7 +45,7 @@ export const useWebSocket = (meetingId, token, options = {}) => {
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsHost = window.location.hostname;
     const wsPort = '8000'; // Backend port
-    const wsUrl = `${wsProtocol}//${wsHost}:${wsPort}/ws/meeting/${meetingId}?token=${token}`;
+    const wsUrl = `${wsProtocol}//${wsHost}:${wsPort}/ws/meeting/${meetingId}?token=${authToken}`;
 
     console.log(`📡 Connecting to WebSocket: ${wsUrl}`);
 

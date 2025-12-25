@@ -27,9 +27,41 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     console.error('API Error:', error.response?.data || error.message)
+    
+    // Handle 401 Unauthorized - token expired or invalid
+    if (error.response?.status === 401) {
+      const currentPath = window.location.pathname
+      if (currentPath !== '/login' && currentPath !== '/register') {
+        localStorage.removeItem('token')
+        window.location.href = '/login'
+      }
+    }
+    
     return Promise.reject(error)
   }
 )
+
+export const authAPI = {
+  // Register new user
+  register: (email, password, name) => 
+    api.post('/api/auth/register', { email, password, name }),
+  
+  // Login user
+  login: (email, password) => {
+    const formData = new URLSearchParams()
+    formData.append('username', email) // OAuth2 expects 'username' field
+    formData.append('password', password)
+    
+    return api.post('/api/auth/login', formData, {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+    })
+  },
+  
+  // Get current user info
+  getCurrentUser: () => api.get('/api/auth/me'),
+}
 
 export const meetingAPI = {
   // Join a meeting (create new session)
