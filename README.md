@@ -13,10 +13,15 @@ This project integrates **speech recognition, sign language translation, summari
 - **Input:** Recorded audio from `speech_Module`  
 - **Output:** `output/transcript.txt`
 
-### **2. 🖐 Sign Language Detection**
-- Detects ASL signs using **MediaPipe + TensorFlow Lite**
-- Recognizes key signs and converts them to text in real time
-- Integrated with transcript flow for inclusivity
+### **2. 🖐 Sign Language Detection (Phase 5 - Client-Side)**
+- **Real-time browser-based ASL detection** using **Google MediaPipe**
+- Detects hand landmarks and recognizes gestures using geometry-based algorithms
+- Supports **10 letters** (A, B, C, D, F, I, L, O, V, Y) and **5 numbers** (1-5)
+- **Client-side processing** - no video sent to server
+- Live webcam feed with hand landmark visualization
+- Text accumulation, copy, download, and history tracking
+- **GPU accelerated** with 25-30 FPS performance
+- See [PHASE5_SUMMARY.md](PHASE5_SUMMARY.md) for details
 
 ### **3. 📝 Meeting Summarization**
 - Summarizes long transcripts into concise notes

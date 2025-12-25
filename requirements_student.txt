@@ -1,0 +1,70 @@
+# Student-Friendly Requirements (No Cloud Costs!)
+# This file removes expensive Google Cloud dependencies
+# Use this instead of requirements.txt if you're a student
+
+# Core Web Framework
+fastapi==0.116.1
+uvicorn[standard]==0.34.0
+websockets==12.0
+
+# Database
+motor==3.4.0
+pymongo==4.6.1
+
+# Authentication & Security
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-multipart==0.0.12
+email-validator==2.3.0
+
+# AI/ML - All FREE and Local!
+openai-whisper==20250625  # Speech-to-Text (FREE!)
+torch>=2.0.0  # Required for Whisper
+transformers==4.38.0  # NLP models (FREE!)
+sentencepiece==0.1.99  # For translation
+sacremoses==0.0.53  # For translation
+pyannote.audio==3.1.1  # Speaker diarization (FREE!)
+
+# Text-to-Speech (FREE Local Alternative!)
+pyttsx3==2.90  # FREE TTS - No cloud needed!
+# Alternative: gtts==2.3.1  # Google TTS API (free, needs internet)
+
+# Computer Vision (for sign language)
+mediapipe==0.10.21
+opencv-python==4.8.1.78
+tensorflow==2.18.0
+# Or use: tensorflow-lite==2.14.0 (lighter)
+
+# Audio Processing
+soundfile==0.12.1
+librosa==0.10.1
+ffmpeg-python==0.2.0
+numpy>=1.24.0,<2.0.0
+
+# NLP Processing
+nltk==3.8.1
+spacy==3.7.2
+# For spacy: python -m spacy download en_core_web_sm
+
+# Document Generation
+fpdf2==2.8.3
+reportlab==4.2.0  # Alternative PDF library
+
+# Utilities
+python-dotenv==1.0.0
+python-dateutil==2.8.2
+requests==2.32.3
+aiofiles==23.2.1
+
+# Data Processing
+pandas==2.2.0
+tqdm==4.66.1
+
+# Optional: For better performance
+# accelerate==0.25.0  # Faster model loading
+# optimum==1.16.0  # Model optimization
+
+# Development Tools (optional)
+# pytest==8.0.0
+# black==24.1.1
+# flake8==7.0.0
