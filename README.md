@@ -1,8 +1,8 @@
 
 # **Inclusive Meeting Assistant** 🎙🤝
 
-An AI-powered assistant that makes meetings more **accessible and inclusive**, inspired by [Read.ai](https://read.ai), with added **sign language support** for differentially abled participants.  
-This project integrates **speech recognition, sign language translation, summarization, action item extraction, translation, text-to-speech, email export, and speaker diarization** into a unified pipeline.
+An AI-powered assistant that makes meetings more **accessible and inclusive**, inspired by [Read.ai](https://read.ai).  
+This project integrates **speech recognition, summarization, action item extraction, translation, text-to-speech, email export, speaker diarization, and automated meeting bot** into a unified pipeline.
 
 ---
 
@@ -13,48 +13,38 @@ This project integrates **speech recognition, sign language translation, summari
 - **Input:** Recorded audio from `speech_Module`  
 - **Output:** `output/transcript.txt`
 
-### **2. 🖐 Sign Language Detection (Phase 5 - Client-Side)**
-- **Real-time browser-based ASL detection** using **Google MediaPipe**
-- Detects hand landmarks and recognizes gestures using geometry-based algorithms
-- Supports **10 letters** (A, B, C, D, F, I, L, O, V, Y) and **5 numbers** (1-5)
-- **Client-side processing** - no video sent to server
-- Live webcam feed with hand landmark visualization
-- Text accumulation, copy, download, and history tracking
-- **GPU accelerated** with 25-30 FPS performance
-- See [PHASE5_SUMMARY.md](PHASE5_SUMMARY.md) for details
-
-### **3. 📝 Meeting Summarization**
+### **2. 📝 Meeting Summarization**
 - Summarizes long transcripts into concise notes
 - Powered by **HuggingFace Transformers** (`distilbart-cnn-12-6`)
 - Example: 10-minute transcript → 4–5 sentence summary
 
-### **4. ✅ Action Items Extraction**
+### **3. ✅ Action Items Extraction**
 - Extracts decisions, todos, and next steps from meeting notes
 - Powered by **Google FLAN-T5**
 - Returns **bullet-point action items**
 
-### **5. 🌍 Multilingual Translation**
+### **4. 🌍 Multilingual Translation**
 - Translates transcripts or summaries into multiple languages
 - Uses **Helsinki-NLP MarianMT models**
 - Example: `en → hi`, `en → fr`, etc.
 
-### **6. 🔊 Text to Speech (TTS)**
+### **5. 🔊 Text to Speech (TTS)**
 - Converts meeting summaries or action items into speech audio
 - Uses **pyttsx3** for offline TTS
 - **Output:** `.wav` audio file for recap
 
-### **7. 📧 Email Export**
+### **6. 📧 Email Export**
 - Exports meeting notes & action items to email
 - SMTP integration (tested; DNS issues pending fix)
 - Sends summaries directly to participants
 
-### **8. 🧑‍🤝‍🧑 Speaker Diarization**
+### **7. 🧑‍🤝‍🧑 Speaker Diarization**
 - Identifies **who spoke when** during the meeting
 - Implemented with **pyannote.audio** diarization pipeline
 - **Output:** Timestamps with speaker labels (`SPEAKER_00`, `SPEAKER_01`, …)
 - **Next:** Merge diarization with transcripts → speaker-attributed summaries
 
-### **9. ⚡ Real-Time WebSocket Updates (Phase 3)**
+### **8. ⚡ Real-Time WebSocket Updates (Phase 3)**
 - **Problem:** Eliminated inefficient polling (60 requests/minute)
 - **Solution:** WebSocket connections for instant updates
 - **Benefits:**
@@ -68,7 +58,7 @@ This project integrates **speech recognition, sign language translation, summari
   - Connection status indicator in UI
 - **See:** `PHASE3_SUMMARY.md`, `PHASE3_QUICKSTART.md` for details
 
-### **10. 🤖 Automated Meeting Bot (Phase 4) - THE KILLER FEATURE**
+### **9. 🤖 Automated Meeting Bot (Phase 4) - THE KILLER FEATURE**
 - **Problem:** Manual meeting joining and transcription setup
 - **Solution:** Automated bot that joins Google Meet and captures audio
 - **Features:**
@@ -179,37 +169,17 @@ python test_all_features.py
 
 ### **✅ Completed**
 - **Phase 1:** Core NLP features (summarization, action items, translation, TTS)
-- **Phase 2:** MongoDB + JWT Authentication ([docs](PHASE2_SUMMARY.md))
-- **Phase 3:** WebSocket real-time updates ([docs](PHASE3_SUMMARY.md))
-- **Phase 4:** Automated Meeting Bot ([docs](PHASE4_SUMMARY.md)) 🎉
+- **Phase 2:** MongoDB + JWT Authentication
+- **Phase 3:** WebSocket real-time updates
+- **Phase 4:** Automated Meeting Bot 🎉
 
 ### **🔜 Upcoming**
-- **Phase 5:** Full frontend integration with authentication
-- **Phase 6:** Collaborative features (multi-user editing)
-- **Phase 7:** Support for Zoom, Microsoft Teams
+- **Phase 5:** Client-side sign language detection (in development)
+- **Phase 6:** Full frontend integration with authentication
+- **Phase 7:** Collaborative features (multi-user editing)
+- **Phase 8:** Support for Zoom, Microsoft Teams
 - Merge diarization output with transcript → **speaker-attributed summaries**
 - Topic segmentation → break meetings into themes
 - Export options (PDF, Notion, etc.)
 - Browser extension (Zoom / Meet integration)
-- Real-time dashboard with speaker labels & sign language overlay
-
-## **📚 Documentation**
-
-### Phase 2: Authentication & Database
-- [PHASE2_SUMMARY.md](PHASE2_SUMMARY.md) - Complete overview
-- [PHASE2_QUICKSTART.md](PHASE2_QUICKSTART.md) - Quick start guide
-- [PHASE2_IMPLEMENTATION.md](PHASE2_IMPLEMENTATION.md) - Technical details
-- [PHASE2_ARCHITECTURE.md](PHASE2_ARCHITECTURE.md) - Architecture diagram
-
-### Phase 3: WebSocket Real-Time
-- [PHASE3_SUMMARY.md](PHASE3_SUMMARY.md) - Complete overview
-- [PHASE3_QUICKSTART.md](PHASE3_QUICKSTART.md) - Testing guide
-- [PHASE3_COMPARISON.md](PHASE3_COMPARISON.md) - Before/after analysis
-- [PHASE3_WEBSOCKET_INTEGRATION.md](PHASE3_WEBSOCKET_INTEGRATION.md) - Technical guide
-
-### Phase 4: Meeting Bot 🤖
-- [PHASE4_INDEX.md](PHASE4_INDEX.md) - **START HERE** - Complete documentation index
-- [PHASE4_QUICKSTART.md](PHASE4_QUICKSTART.md) - 5-minute setup guide
-- [bot_engine/README.md](bot_engine/README.md) - Comprehensive bot guide
-- [PHASE4_SUMMARY.md](PHASE4_SUMMARY.md) - Technical architecture & implementation
-- [PHASE4_CHECKLIST.md](PHASE4_CHECKLIST.md) - Development & deployment checklist
+- Real-time dashboard with speaker labels
