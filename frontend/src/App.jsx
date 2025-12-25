@@ -8,6 +8,7 @@ import MeetingReport from './pages/MeetingReport'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import Profile from './pages/Profile'
+// import SignLanguage from './pages/SignLanguage' // Temporarily disabled for debugging
 
 function App() {
   return (
@@ -41,6 +42,13 @@ function App() {
                   <Profile />
                 </ProtectedRoute>
               } />
+              {/* Sign Language temporarily disabled for debugging
+              <Route path="/sign-language" element={
+                <ProtectedRoute>
+                  <SignLanguage />
+                </ProtectedRoute>
+              } />
+              */}
               
               {/* Catch all - redirect to home */}
               <Route path="*" element={<Navigate to="/" replace />} />
