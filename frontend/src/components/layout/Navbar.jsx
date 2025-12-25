@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { Moon, Sun, User, LayoutDashboard, LogOut, Settings, ChevronDown } from 'lucide-react'
+import { Moon, Sun, User, LayoutDashboard, LogOut, Settings, ChevronDown, Hand } from 'lucide-react'
 import { useTheme } from '@/contexts/ThemeContext'
 import { useAuth } from '@/contexts/AuthContext'
 import Button from '@/components/shared/Button'
@@ -57,6 +57,17 @@ const Navbar = () => {
                 }`}
               >
                 Dashboard
+              </Link>
+              <Link
+                to="/sign-language"
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+                  location.pathname === '/sign-language'
+                    ? 'bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300'
+                    : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                }`}
+              >
+                <Hand className="w-4 h-4" />
+                Sign Language
               </Link>
             </div>
           )}
