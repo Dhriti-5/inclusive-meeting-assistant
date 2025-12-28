@@ -15,7 +15,9 @@ class GoogleMeetBot {
     this.ws = null;
     this.audioStream = null;
     this.isRecording = false;
-    this.signLanguagePoller = null;  // For polling sign language commands
+    this.signLanguagePoller = null;  // Deprecated: Now using WebSocket
+    this.meetingWs = null;  // Phase 3: WebSocket for meeting events
+    this.meetingId = 'session_demo_1';  // Default, can be overridden
     
     // Configuration
     this.config = {
@@ -24,9 +26,10 @@ class GoogleMeetBot {
       meetingUrl: process.env.MEETING_URL,
       backendWsUrl: process.env.BACKEND_WS_URL || 'ws://localhost:8000/ws/bot-audio',
       backendApiUrl: process.env.BACKEND_API_URL || 'http://localhost:8000',
+      meetingWsUrl: process.env.MEETING_WS_URL || 'ws://localhost:8000/ws/meeting',
       headless: process.env.HEADLESS === 'true',
       audioSampleRate: parseInt(process.env.AUDIO_SAMPLE_RATE) || 16000,
-      signLanguagePollingInterval: parseInt(process.env.SIGN_POLLING_INTERVAL) || 1000  // Check every 1 second
+      signLanguagePollingInterval: parseInt(process.env.SIGN_POLLING_INTERVAL) || 1000  // Deprecated
     };
   }
 
@@ -167,66 +170,80 @@ class GoogleMeetBot {
     try {
       // Navigate to meeting URL
       await this.page.goto(this.config.meetingUrl, {
-        waitUntil: 'networkidle2',
+        waitUntil: 'domcontentloaded',
         timeout: 30000
       });
       
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      console.log('   Waiting for page to fully load...');
+      await new Promise(resolve => setTimeout(resolve, 5000));
       
       // Try to turn off camera and microphone before joining
       try {
-        // Turn off camera
+        console.log('   Attempting to turn off camera/mic...');
         const cameraButton = await this.page.$('[aria-label*="camera" i], [data-is-muted="false"]');
         if (cameraButton) {
           await cameraButton.click();
           await new Promise(resolve => setTimeout(resolve, 500));
         }
       } catch (e) {
-        console.log('Camera button not found or already off');
+        console.log('   ℹ️  Camera button not found or already off');
       }
       
       // Click "Join now" or "Ask to join" button
+      console.log('   Looking for join button...');
       const joinButtonSelectors = [
         'button[jsname="Qx7uuf"]', // Join now
-        'button:has-text("Join now")',
-        'button:has-text("Ask to join")',
-        '[aria-label*="Join" i]',
-        'button span:has-text("Join")',
-        '.VfPpkd-LgbsSe' // Material button
+        'div[role="button"][jsname="Qx7uuf"]', // Alternative join button
+        'span[jsname="V67aGc"]', // Join now text
       ];
       
       let joined = false;
       for (const selector of joinButtonSelectors) {
         try {
-          await this.page.waitForSelector(selector, { timeout: 5000 });
-          await this.page.click(selector);
-          joined = true;
-          console.log(`✅ Clicked join button: ${selector}`);
-          break;
+          const element = await this.page.waitForSelector(selector, { 
+            timeout: 5000,
+            visible: true 
+          });
+          if (element) {
+            await element.click();
+            joined = true;
+            console.log(`   ✅ Clicked join button: ${selector}`);
+            break;
+          }
         } catch (e) {
+          console.log(`   ⏭️  Selector not found: ${selector}`);
           continue;
         }
       }
       
+      // Fallback: Try XPath for buttons containing "Join"
       if (!joined) {
-        // Try to find any button with "Join" text
-        const buttons = await this.page.$$('button');
-        for (const button of buttons) {
-          const text = await button.evaluate(el => el.textContent);
-          if (text && (text.includes('Join') || text.includes('Ask to join'))) {
-            await button.click();
+        try {
+          console.log('   Trying fallback method (XPath)...');
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+          const joinButtons = await this.page.$x("//button[contains(., 'Join') or contains(., 'Ask to join')]");
+          if (joinButtons.length > 0) {
+            await joinButtons[0].click();
             joined = true;
-            console.log('✅ Clicked join button by text content');
-            break;
+            console.log('   ✅ Clicked join button via XPath');
           }
+        } catch (e) {
+          console.log('   ⚠️  XPath fallback failed:', e.message);
         }
       }
       
+      // Last resort: Manual interaction prompt
       if (!joined) {
-        throw new Error('Could not find join button');
+        console.log('\n   ⚠️  Could not find join button automatically.');
+        console.log('   👆 Please click "Join now" manually in the browser window.');
+        console.log('   ⏳ Waiting 30 seconds for manual join...\n');
+        await new Promise(resolve => setTimeout(resolve, 30000));
+        joined = true; // Assume user clicked it
       }
       
       // Wait for meeting to load
+      console.log('   Waiting for meeting interface to load...');
       await new Promise(resolve => setTimeout(resolve, 5000));
       
       console.log('✅ Successfully joined the meeting');
@@ -334,36 +351,121 @@ class GoogleMeetBot {
   }
 
   /**
-   * PHASE 4: Sign Language Bridge
-   * Poll the backend for sign language commands and type them in chat
+   * PHASE 3: Sign Language Bridge (WebSocket Edition)
+   * Connect to meeting WebSocket and react to sign language detections in real-time
    */
-  async startSignLanguagePoller() {
-    console.log('🤟 Starting Sign Language Command Poller...');
-    console.log(`   Polling interval: ${this.config.signLanguagePollingInterval}ms`);
+  async connectToHiveMind() {
+    console.log('🧠 Connecting Bot to Hive Mind...');
     
-    this.signLanguagePoller = setInterval(async () => {
+    // Extract meeting ID from URL if available
+    if (this.config.meetingUrl) {
+      this.meetingId = this.extractMeetingId(this.config.meetingUrl);
+    }
+    
+    // Use demo token for now (in production, get from proper auth)
+    const token = process.env.BOT_TOKEN || 'demo_token_bot';
+    const wsUrl = `${this.config.meetingWsUrl}/${this.meetingId}?token=${token}`;
+    
+    console.log(`   Meeting ID: ${this.meetingId}`);
+    console.log(`   WebSocket URL: ${wsUrl}`);
+    
+    this.meetingWs = new WebSocket(wsUrl);
+    
+    this.meetingWs.on('open', () => {
+      console.log('✅ Bot Connected to Meeting WebSocket!');
+      console.log('   Listening for sign language detections...');
+      
+      // Send initial connection message
+      this.meetingWs.send(JSON.stringify({
+        type: 'bot_action',
+        action: 'connected',
+        status: 'Bot joined meeting and ready to assist',
+        timestamp: new Date().toISOString()
+      }));
+    });
+    
+    this.meetingWs.on('message', async (data) => {
       try {
-        // Check backend for new sign language commands
-        const response = await fetch(`${this.config.backendApiUrl}/api/get-latest-command`);
-        const data = await response.json();
+        const message = JSON.parse(data);
         
-        if (data.command === 'type' && data.text) {
-          console.log(`✍️ Sign Language Command: ${data.text}`);
-          await this.sendChatMessage(data.text);
+        // --- SCENARIO 1: Sign Language Detected ---
+        if (message.type === 'gesture_update') {
+          const word = message.word.toUpperCase();
+          const confidence = (message.confidence * 100).toFixed(0);
+          
+          console.log(`🤟 Sign detected: ${word} (${confidence}% confidence)`);
+          
+          // Filter: Only type specific "Action Words"
+          // We don't want to spam chat with every single sign
+          const actionTriggers = ['QUESTION', 'YES', 'NO', 'THANKS'];
+          
+          if (actionTriggers.includes(word)) {
+            const chatMessage = `[Sign Interpreter]: User signed "${word}"`;
+            console.log(`   📤 Typing in Meet chat: ${chatMessage}`);
+            await this.sendChatMessage(chatMessage);
+            
+            // Notify backend that action was taken
+            this.meetingWs.send(JSON.stringify({
+              type: 'bot_action',
+              action: 'typed_message',
+              status: `Typed sign: ${word}`,
+              timestamp: new Date().toISOString()
+            }));
+          } else {
+            console.log(`   ℹ️  Ignoring sign: ${word} (not an action trigger)`);
+          }
+        }
+        
+        // --- SCENARIO 2: Transcript Update (Optional: Log or Process) ---
+        if (message.type === 'transcript_update') {
+          console.log(`🎤 Transcript: ${message.speaker}: ${message.text.substring(0, 50)}...`);
+        }
+        
+        // --- SCENARIO 3: Ping/Pong ---
+        if (message.type === 'pong') {
+          // Keep-alive response, no action needed
         }
         
       } catch (error) {
-        // Silently ignore errors (backend might be restarting)
-        // Uncomment for debugging: console.error('Sign language poller error:', error.message);
+        console.error('❌ Error processing meeting message:', error);
       }
-    }, this.config.signLanguagePollingInterval);
+    });
+    
+    this.meetingWs.on('error', (error) => {
+      console.error('❌ Meeting WebSocket error:', error.message);
+    });
+    
+    this.meetingWs.on('close', () => {
+      console.log('🔌 Disconnected from Meeting WebSocket');
+      
+      // Attempt reconnection after 5 seconds
+      console.log('   🔄 Attempting reconnection in 5 seconds...');
+      setTimeout(() => {
+        if (this.browser && !this.browser.closed) {
+          this.connectToHiveMind();
+        }
+      }, 5000);
+    });
+  }
+  
+  /**
+   * DEPRECATED: Old polling method (kept for backward compatibility)
+   * Use connectToHiveMind() for real-time WebSocket integration
+   */
+  async startSignLanguagePoller() {
+    console.log('⚠️  Sign Language Poller is deprecated.');
+    console.log('   Use connectToHiveMind() for real-time WebSocket integration.');
+    console.log('   Skipping polling setup...');
   }
 
   /**
    * Send a message to Google Meet chat
+   * Enhanced for Phase 3 with better selector handling
    */
   async sendChatMessage(message) {
     try {
+      console.log(`   💬 Attempting to send chat message: "${message}"`);
+      
       // Wait a moment to ensure page is ready
       await this.page.waitForTimeout(500);
       
@@ -433,7 +535,7 @@ class GoogleMeetBot {
     
     this.isRecording = false;
     
-    // Stop sign language poller
+    // Stop sign language poller (deprecated)
     if (this.signLanguagePoller) {
       clearInterval(this.signLanguagePoller);
       this.signLanguagePoller = null;
@@ -444,12 +546,23 @@ class GoogleMeetBot {
       this.audioStream.destroy();
     }
     
+    // Close WebSocket connections
     if (this.ws) {
       this.ws.send(JSON.stringify({
         type: 'bot_disconnected',
         timestamp: new Date().toISOString()
       }));
       this.ws.close();
+    }
+    
+    if (this.meetingWs) {
+      this.meetingWs.send(JSON.stringify({
+        type: 'bot_action',
+        action: 'disconnected',
+        status: 'Bot leaving meeting',
+        timestamp: new Date().toISOString()
+      }));
+      this.meetingWs.close();
     }
     
     if (this.browser) {
@@ -467,11 +580,13 @@ class GoogleMeetBot {
       await this.connectWebSocket();
       await this.startAudioCapture();
       
-      // PHASE 4: Start sign language command poller
-      await this.startSignLanguagePoller();
+      // PHASE 3: Connect to Meeting WebSocket (Real-time Sign Language)
+      await this.connectToHiveMind();
+      
       console.log('🎉 Bot is fully operational!');
       console.log('   - Audio transcription: ✅');
-      console.log('   - Sign language bridge: ✅');
+      console.log('   - Sign language bridge (WebSocket): ✅');
+      console.log('   - Real-time gesture response: ✅');
       
       // Keep process alive
       process.on('SIGINT', async () => {

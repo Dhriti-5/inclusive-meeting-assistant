@@ -13,8 +13,20 @@ This project integrates **speech recognition, sign language translation, summari
 - **Input:** Recorded audio from `speech_Module`  
 - **Output:** `output/transcript.txt`
 
-### **2. 🖐 Sign Language Detection (Phase 5 - Client-Side)**
-- **Real-time browser-based ASL detection** using **Google MediaPipe**
+### **2. 🖐 Sign Language Detection**
+
+#### **Phase 4: ML-Based Recognition (INTEGRATED)**
+- **Real-time sign language recognition** with **TensorFlow LSTM model**
+- Detects **6 basic meeting gestures**: hello, yes, no, question, thanks, idle
+- **>80% confidence threshold** for accurate detection
+- **Fully integrated with live meeting chat** - signs automatically appear in transcript feed
+- **WebSocket broadcasting** - all participants see sign language messages in real-time
+- Special UI styling with gradient backgrounds and emojis
+- Camera overlay shows detected signs with confidence levels
+- See [SIGN_LANGUAGE_INTEGRATION.md](SIGN_LANGUAGE_INTEGRATION.md) for complete guide
+
+#### **Phase 5: Client-Side Browser Detection**
+- **Browser-based ASL detection** using **Google MediaPipe**
 - Detects hand landmarks and recognizes gestures using geometry-based algorithms
 - Supports **10 letters** (A, B, C, D, F, I, L, O, V, Y) and **5 numbers** (1-5)
 - **Client-side processing** - no video sent to server
@@ -104,11 +116,16 @@ inclusive-meeting-assistant/
 │   │   ├── nlp_pipeline.py      # Summarization, Action items, Translation
 │   │   ├── translate_text.py
 │   ├── speech_Module/           # Whisper / ASR integration
-│   ├── sign_Module/             # Sign language detection
 │   ├── tts_Module/
 │   │   ├── text_to_speech.py
 │   ├── speaker_diarization.py   # Pyannote diarization pipeline
 │   └── output/                  # Transcripts, summaries, etc.
+│
+├── sign_language/               # Sign Language Recognition (Phase 4)
+│   ├── inference.py             # Real-time sign detection with ML model
+│   ├── meeting_actions.h5       # Trained LSTM model
+│   ├── train_model.py           # Model training script
+│   └── MP_Data/                 # Training data for 6 gestures
 │
 ├── bot_engine/                  # Meeting Bot (Phase 4)
 │   ├── bot_engine.js            # Puppeteer automation + audio capture
@@ -117,6 +134,22 @@ inclusive-meeting-assistant/
 │   └── README.md                # Bot setup guide
 │
 ├── frontend/                    # React.js (UI for meetings)
+│   ├── src/
+│   │   ├── hooks/
+│   │   │   └── useWebSocket.jsx # WebSocket client with sign language support
+│   │   ├── pages/
+│   │   │   └── LiveMeeting.jsx  # Live meeting with integrated sign language
+│   │   └── components/live-session/
+│   │       ├── TranscriptFeed.jsx    # Shows sign language messages
+│   │       └── SignLanguageCam.jsx   # Camera feed with overlay
+│
+├── start_sign_language.ps1      # Sign language launcher (Windows)
+├── start_sign_language.sh       # Sign language launcher (Linux/Mac)
+├── start_complete_system.ps1    # Launch everything at once
+├── test_sign_language_integration.py  # Integration test
+├── SIGN_LANGUAGE_INTEGRATION.md # Complete sign language guide
+├── QUICK_REFERENCE.md           # Quick start guide
+├── DATA_FLOW_DIAGRAM.md         # Architecture diagrams
 ├── test_all_features.py         # Test script to verify all features
 ├── test_bot_audio.py            # Bot audio processing tests
 ├── setup_bot.bat / .sh          # Bot setup scripts
@@ -175,16 +208,58 @@ python test_all_features.py
 
 ---
 
+## **� Quick Start (All Components)**
+
+### **Option 1: Launch Everything at Once (Recommended)**
+```powershell
+# Windows
+.\start_complete_system.ps1
+
+# This starts: Backend + Frontend + Sign Language Recognition
+```
+
+### **Option 2: Manual Launch**
+```powershell
+# Terminal 1 - Backend
+cd backend
+python main.py
+
+# Terminal 2 - Frontend
+cd frontend
+npm run dev
+
+# Terminal 3 - Sign Language (optional)
+.\start_sign_language.ps1
+```
+
+### **Option 3: Test Integration**
+```powershell
+# Test sign language integration without camera
+python test_sign_language_integration.py
+```
+
+**📚 For detailed sign language setup, see [SIGN_LANGUAGE_INTEGRATION.md](SIGN_LANGUAGE_INTEGRATION.md)**  
+**📝 Quick reference: [QUICK_REFERENCE.md](QUICK_REFERENCE.md)**
+
+---
+
 ## **🗺 Roadmap & Completed Phases**
 
 ### **✅ Completed**
 - **Phase 1:** Core NLP features (summarization, action items, translation, TTS)
 - **Phase 2:** MongoDB + JWT Authentication ([docs](PHASE2_SUMMARY.md))
 - **Phase 3:** WebSocket real-time updates ([docs](PHASE3_SUMMARY.md))
-- **Phase 4:** Automated Meeting Bot ([docs](PHASE4_SUMMARY.md)) 🎉
+- **Phase 4:** Automated Meeting Bot + **Sign Language Integration** ([docs](PHASE4_SUMMARY.md)) 🎉
+  - **NEW:** ML-based sign recognition fully integrated with live chat
+  - 6 basic gestures: hello, yes, no, question, thanks
+  - Real-time WebSocket broadcasting
+  - Special UI styling in transcript feed
+- **Phase 5:** Browser-based client-side sign language detection ([docs](PHASE5_SUMMARY.md))
 
 ### **🔜 Upcoming**
-- **Phase 5:** Full frontend integration with authentication
+- **Phase 6:** Full frontend integration with authentication
+- Enhanced sign language vocabulary
+- Mobile device support
 - **Phase 6:** Collaborative features (multi-user editing)
 - **Phase 7:** Support for Zoom, Microsoft Teams
 - Merge diarization output with transcript → **speaker-attributed summaries**

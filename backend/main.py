@@ -63,6 +63,7 @@ from bot_audio_processor import bot_manager
 class SignMessage(BaseModel):
     word: str
     confidence: float
+    meeting_id: Optional[str] = "global"  # Default to global if not provided
 
 class SignCommand(BaseModel):
     command: str
@@ -210,29 +211,38 @@ async def websocket_endpoint(
     Usage:
         ws://localhost:8000/ws/meeting/{meeting_id}?token=<jwt_token>
     """
-    # Validate JWT token
-    try:
-        from jose import jwt, JWTError
-        from auth import SECRET_KEY, ALGORITHM
-        
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_email: str = payload.get("sub")
-        if user_email is None:
+    # Validate JWT token (with demo bypass for testing)
+    user_email = None
+    
+    # Allow demo tokens for testing/development
+    if token.startswith("demo"):
+        user_email = f"demo_user_{meeting_id}"
+        print(f"🧪 Demo token accepted for meeting: {meeting_id}")
+    else:
+        try:
+            from jose import jwt, JWTError
+            from auth import SECRET_KEY, ALGORITHM
+            
+            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            user_email = payload.get("sub")
+            if user_email is None:
+                await websocket.close(code=1008, reason="Invalid token")
+                return
+        except JWTError:
             await websocket.close(code=1008, reason="Invalid token")
             return
-    except JWTError:
-        await websocket.close(code=1008, reason="Invalid token")
-        return
     
     # Verify meeting exists and user has access
-    meetings_collection = get_meetings_collection()
-    meeting = await meetings_collection.find_one({"_id": meeting_id})
-    
-    if not meeting:
-        # Also check in-memory for backward compatibility
-        if meeting_id not in meetings_db:
-            await websocket.close(code=1008, reason="Meeting not found")
-            return
+    # Skip meeting verification for demo sessions
+    if not meeting_id.startswith("session_demo"):
+        meetings_collection = get_meetings_collection()
+        meeting = await meetings_collection.find_one({"_id": meeting_id})
+        
+        if not meeting:
+            # Also check in-memory for backward compatibility
+            if meeting_id not in meetings_db:
+                await websocket.close(code=1008, reason="Meeting not found")
+                return
     
     # Connect the WebSocket
     await manager.connect(websocket, meeting_id, user_email)
@@ -248,12 +258,45 @@ async def websocket_endpoint(
     try:
         # Keep connection alive and handle incoming messages
         while True:
-            # Wait for messages from client (ping/pong, etc.)
-            data = await websocket.receive_text()
+            # Wait for messages from client (ping/pong, gestures, etc.)
+            data = await websocket.receive_json()
             
-            # Handle ping/pong for keepalive
-            if data == "ping":
-                await websocket.send_text("pong")
+            # Determine Event Type (The "Contracts")
+            event_type = data.get("type")
+            
+            if event_type == "ping":
+                await websocket.send_json({"type": "pong"})
+                
+            elif event_type == "gesture":
+                # A sign was detected! Broadcast to everyone in the meeting
+                print(f"🤟 Gesture in {meeting_id}: {data.get('word', 'Unknown')}")
+                await manager.broadcast_to_meeting(meeting_id, {
+                    "type": "gesture_update",
+                    "user": user_email,
+                    "word": data.get("word", "Unknown"),
+                    "confidence": data.get("confidence", 0.0),
+                    "timestamp": datetime.utcnow().isoformat()
+                })
+                
+            elif event_type == "transcript":
+                # Audio transcript received - broadcast to all participants
+                print(f"🎤 Transcript in {meeting_id}: {data.get('text', '')[:50]}...")
+                await manager.broadcast_to_meeting(meeting_id, {
+                    "type": "transcript_update",
+                    "text": data.get("text", ""),
+                    "speaker": data.get("speaker", "Unknown"),
+                    "timestamp": datetime.utcnow().isoformat()
+                })
+                
+            elif event_type == "bot_action":
+                # Bot status or action update
+                print(f"🤖 Bot action in {meeting_id}: {data.get('action', 'Unknown')}")
+                await manager.broadcast_to_meeting(meeting_id, {
+                    "type": "bot_status",
+                    "action": data.get("action", ""),
+                    "status": data.get("status", ""),
+                    "timestamp": datetime.utcnow().isoformat()
+                })
             
     except WebSocketDisconnect:
         await manager.disconnect(websocket, meeting_id)
@@ -1091,33 +1134,29 @@ Team Inclusive AI
 async def receive_sign_detection(sign: SignMessage):
     """
     Receive sign language detection from inference.py
-    Converts detected signs into chat messages for the bot
+    Converts detected signs into transcript messages that appear in the chat
     """
-    print(f"🤟 Sign Detected: {sign.word} (confidence: {sign.confidence:.2f})")
+    print(f"🤟 Sign Detected: {sign.word} (confidence: {sign.confidence:.2f}) for meeting: {sign.meeting_id}")
     
     # Ignore low confidence and idle state
     if sign.confidence < 0.8 or sign.word == "idle":
         return {"status": "ignored", "reason": "Low confidence or idle state"}
     
-    # Map sign words to meaningful chat messages
+    # Map sign words to meaningful chat messages with emojis
     message_map = {
-        "question": "[Sign Language] 🙋 Participant has a question",
-        "hello": "[Sign Language] 👋 Participant says Hello!",
-        "yes": "[Sign Language] ✅ Participant agrees",
-        "no": "[Sign Language] ❌ Participant disagrees",
-        "thanks": "[Sign Language] 🙏 Participant says Thank You"
+        "question": "🙋 Participant has a question",
+        "hello": "👋 Participant says Hello!",
+        "yes": "✅ Participant agrees",
+        "no": "❌ Participant disagrees",
+        "thanks": "🙏 Participant says Thank You"
     }
     
     message = message_map.get(sign.word)
     
     if message:
-        # Add to command queue for bot to pick up
-        sign_command_queue.append(message)
-        print(f"✅ Message queued for bot: {message}")
-        
-        # Broadcast to WebSocket clients (optional: for real-time UI updates)
-        await websocket_manager.broadcast_to_meeting(
-            "global",  # or specific meeting_id if available
+        # Broadcast to WebSocket clients for real-time UI updates
+        await manager.broadcast_to_meeting(
+            sign.meeting_id,
             {
                 "type": "sign_detected",
                 "word": sign.word,
@@ -1127,10 +1166,12 @@ async def receive_sign_detection(sign: SignMessage):
             }
         )
         
+        print(f"✅ Sign language message broadcasted to meeting {sign.meeting_id}: {message}")
+        
         return {
             "status": "success",
             "message": message,
-            "queued": True
+            "broadcasted": True
         }
     
     return {
