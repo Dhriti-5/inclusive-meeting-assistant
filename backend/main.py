@@ -59,6 +59,19 @@ from models import (
 from websocket_manager import manager
 from bot_audio_processor import bot_manager
 
+# Sign Language Integration Models
+class SignMessage(BaseModel):
+    word: str
+    confidence: float
+    meeting_id: Optional[str] = "global"  # Default to global if not provided
+
+class SignCommand(BaseModel):
+    command: str
+    text: Optional[str] = None
+
+# Global queue for sign language commands (scalable: use Redis in production)
+sign_command_queue: List[str] = []
+
 app = FastAPI()
 
 # Add CORS middleware
@@ -198,29 +211,38 @@ async def websocket_endpoint(
     Usage:
         ws://localhost:8000/ws/meeting/{meeting_id}?token=<jwt_token>
     """
-    # Validate JWT token
-    try:
-        from jose import jwt, JWTError
-        from auth import SECRET_KEY, ALGORITHM
-        
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_email: str = payload.get("sub")
-        if user_email is None:
+    # Validate JWT token (with demo bypass for testing)
+    user_email = None
+    
+    # Allow demo tokens for testing/development
+    if token.startswith("demo"):
+        user_email = f"demo_user_{meeting_id}"
+        print(f"🧪 Demo token accepted for meeting: {meeting_id}")
+    else:
+        try:
+            from jose import jwt, JWTError
+            from auth import SECRET_KEY, ALGORITHM
+            
+            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            user_email = payload.get("sub")
+            if user_email is None:
+                await websocket.close(code=1008, reason="Invalid token")
+                return
+        except JWTError:
             await websocket.close(code=1008, reason="Invalid token")
             return
-    except JWTError:
-        await websocket.close(code=1008, reason="Invalid token")
-        return
     
     # Verify meeting exists and user has access
-    meetings_collection = get_meetings_collection()
-    meeting = await meetings_collection.find_one({"_id": meeting_id})
-    
-    if not meeting:
-        # Also check in-memory for backward compatibility
-        if meeting_id not in meetings_db:
-            await websocket.close(code=1008, reason="Meeting not found")
-            return
+    # Skip meeting verification for demo sessions
+    if not meeting_id.startswith("session_demo"):
+        meetings_collection = get_meetings_collection()
+        meeting = await meetings_collection.find_one({"_id": meeting_id})
+        
+        if not meeting:
+            # Also check in-memory for backward compatibility
+            if meeting_id not in meetings_db:
+                await websocket.close(code=1008, reason="Meeting not found")
+                return
     
     # Connect the WebSocket
     await manager.connect(websocket, meeting_id, user_email)
@@ -236,12 +258,45 @@ async def websocket_endpoint(
     try:
         # Keep connection alive and handle incoming messages
         while True:
-            # Wait for messages from client (ping/pong, etc.)
-            data = await websocket.receive_text()
+            # Wait for messages from client (ping/pong, gestures, etc.)
+            data = await websocket.receive_json()
             
-            # Handle ping/pong for keepalive
-            if data == "ping":
-                await websocket.send_text("pong")
+            # Determine Event Type (The "Contracts")
+            event_type = data.get("type")
+            
+            if event_type == "ping":
+                await websocket.send_json({"type": "pong"})
+                
+            elif event_type == "gesture":
+                # A sign was detected! Broadcast to everyone in the meeting
+                print(f"🤟 Gesture in {meeting_id}: {data.get('word', 'Unknown')}")
+                await manager.broadcast_to_meeting(meeting_id, {
+                    "type": "gesture_update",
+                    "user": user_email,
+                    "word": data.get("word", "Unknown"),
+                    "confidence": data.get("confidence", 0.0),
+                    "timestamp": datetime.utcnow().isoformat()
+                })
+                
+            elif event_type == "transcript":
+                # Audio transcript received - broadcast to all participants
+                print(f"🎤 Transcript in {meeting_id}: {data.get('text', '')[:50]}...")
+                await manager.broadcast_to_meeting(meeting_id, {
+                    "type": "transcript_update",
+                    "text": data.get("text", ""),
+                    "speaker": data.get("speaker", "Unknown"),
+                    "timestamp": datetime.utcnow().isoformat()
+                })
+                
+            elif event_type == "bot_action":
+                # Bot status or action update
+                print(f"🤖 Bot action in {meeting_id}: {data.get('action', 'Unknown')}")
+                await manager.broadcast_to_meeting(meeting_id, {
+                    "type": "bot_status",
+                    "action": data.get("action", ""),
+                    "status": data.get("status", ""),
+                    "timestamp": datetime.utcnow().isoformat()
+                })
             
     except WebSocketDisconnect:
         await manager.disconnect(websocket, meeting_id)
@@ -1071,6 +1126,102 @@ Team Inclusive AI
 
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+# ====== SIGN LANGUAGE BRIDGE ENDPOINTS (PHASE 4) ======
+
+@app.post("/api/sign-detected")
+async def receive_sign_detection(sign: SignMessage):
+    """
+    Receive sign language detection from inference.py
+    Converts detected signs into transcript messages that appear in the chat
+    """
+    print(f"🤟 Sign Detected: {sign.word} (confidence: {sign.confidence:.2f}) for meeting: {sign.meeting_id}")
+    
+    # Ignore low confidence and idle state
+    if sign.confidence < 0.8 or sign.word == "idle":
+        return {"status": "ignored", "reason": "Low confidence or idle state"}
+    
+    # Map sign words to meaningful chat messages with emojis
+    message_map = {
+        "question": "🙋 Participant has a question",
+        "hello": "👋 Participant says Hello!",
+        "yes": "✅ Participant agrees",
+        "no": "❌ Participant disagrees",
+        "thanks": "🙏 Participant says Thank You"
+    }
+    
+    message = message_map.get(sign.word)
+    
+    if message:
+        # Broadcast to WebSocket clients for real-time UI updates
+        await manager.broadcast_to_meeting(
+            sign.meeting_id,
+            {
+                "type": "sign_detected",
+                "word": sign.word,
+                "message": message,
+                "confidence": sign.confidence,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+        )
+        
+        print(f"✅ Sign language message broadcasted to meeting {sign.meeting_id}: {message}")
+        
+        return {
+            "status": "success",
+            "message": message,
+            "broadcasted": True
+        }
+    
+    return {
+        "status": "ignored",
+        "reason": f"Unknown sign word: {sign.word}"
+    }
+
+
+@app.get("/api/get-latest-command")
+async def get_latest_sign_command():
+    """
+    Bot polls this endpoint to check for new sign language commands
+    Returns the oldest command in queue (FIFO)
+    """
+    if sign_command_queue:
+        # Pop the first message from queue
+        message = sign_command_queue.pop(0)
+        return {
+            "command": "type",
+            "text": message
+        }
+    
+    return {
+        "command": "none"
+    }
+
+
+@app.get("/api/sign-queue-status")
+async def get_sign_queue_status():
+    """
+    Debug endpoint to check queue status
+    """
+    return {
+        "queue_length": len(sign_command_queue),
+        "pending_messages": sign_command_queue[:5]  # Show first 5
+    }
+
+
+@app.post("/api/clear-sign-queue")
+async def clear_sign_queue():
+    """
+    Admin endpoint to clear the queue if needed
+    """
+    global sign_command_queue
+    cleared_count = len(sign_command_queue)
+    sign_command_queue.clear()
+    return {
+        "status": "cleared",
+        "messages_cleared": cleared_count
+    }
 
 
 if __name__ == "__main__":

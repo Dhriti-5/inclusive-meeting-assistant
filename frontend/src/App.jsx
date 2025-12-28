@@ -8,6 +8,7 @@ import MeetingReport from './pages/MeetingReport'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import Profile from './pages/Profile'
+import MeetingSession from './pages/MeetingSession'
 // import SignLanguage from './pages/SignLanguage' // Temporarily disabled for debugging
 
 function App() {
@@ -42,6 +43,10 @@ function App() {
                   <Profile />
                 </ProtectedRoute>
               } />
+              
+              {/* Phase 2: Unified Meeting Session (Real-time Dashboard) */}
+              <Route path="/session/:sessionId" element={<MeetingSession />} />
+              
               {/* Sign Language temporarily disabled for debugging
               <Route path="/sign-language" element={
                 <ProtectedRoute>

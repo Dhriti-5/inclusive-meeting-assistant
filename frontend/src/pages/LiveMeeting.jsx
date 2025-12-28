@@ -42,6 +42,28 @@ const LiveMeeting = () => {
       console.log('Received transcript segment:', segment)
       setTranscripts(prev => [...prev, segment])
     },
+    onSignDetected: (signData) => {
+      console.log('Sign language detected:', signData)
+      // Update the detected sign for the camera overlay
+      setDetectedSign({
+        letter: signData.word,
+        confidence: signData.confidence
+      })
+      
+      // Add sign language message to transcript feed
+      const signTranscript = {
+        speaker: 'Sign Language',
+        text: signData.message,
+        timestamp: signData.timestamp,
+        isSignLanguage: true  // Flag to style differently
+      }
+      setTranscripts(prev => [...prev, signTranscript])
+      
+      // Clear the detected sign after 3 seconds
+      setTimeout(() => {
+        setDetectedSign(null)
+      }, 3000)
+    },
     onStatus: (status, details) => {
       console.log('Status update:', status, details)
       setMeetingStatus(status)

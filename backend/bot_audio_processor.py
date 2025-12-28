@@ -129,15 +129,30 @@ class BotConnectionManager:
             if not self.meeting_connections[meeting_id]:
                 del self.meeting_connections[meeting_id]
     
-    async def broadcast_transcription(self, meeting_id: str, text: str):
-        """Broadcast transcription to all connected clients"""
+    async def broadcast_transcription(self, meeting_id: str, text: str, speaker: str = "Meeting Bot"):
+        """
+        Broadcast transcription to all connected clients
+        PHASE 3: Now also broadcasts to meeting WebSocket for dashboard integration
+        """
         if meeting_id not in self.meeting_connections:
+            # Even if no direct connections, try to broadcast via meeting manager
+            try:
+                from .websocket_manager import manager
+                await manager.broadcast_to_meeting(meeting_id, {
+                    "type": "transcript_update",
+                    "text": text,
+                    "speaker": speaker,
+                    "source": "meeting_bot"
+                })
+            except Exception as e:
+                print(f"⚠️  Could not broadcast via meeting manager: {e}")
             return
         
         message = {
             "type": "bot_transcription",
             "text": text,
             "source": "meeting_bot",
+            "speaker": speaker,
             "timestamp": __import__('datetime').datetime.utcnow().isoformat()
         }
         
@@ -152,6 +167,18 @@ class BotConnectionManager:
         # Clean up disconnected clients
         for client_ws in disconnected:
             await self.unregister_client(meeting_id, client_ws)
+        
+        # PHASE 3: Also broadcast via meeting WebSocket manager for dashboard
+        try:
+            from .websocket_manager import manager
+            await manager.broadcast_to_meeting(meeting_id, {
+                "type": "transcript_update",
+                "text": text,
+                "speaker": speaker,
+                "source": "meeting_bot"
+            })
+        except Exception as e:
+            print(f"⚠️  Could not broadcast via meeting manager: {e}")
     
     async def process_audio_chunk(self, meeting_id: str, audio_data: bytes):
         """Process incoming audio chunk from bot"""
