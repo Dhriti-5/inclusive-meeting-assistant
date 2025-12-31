@@ -178,16 +178,6 @@ const Profile = () => {
                       Enable speaker diarization
                     </span>
                   </label>
-                  <label className="flex items-center space-x-3 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                      defaultChecked
-                    />
-                    <span className="text-sm text-gray-700 dark:text-gray-300">
-                      Enable sign language detection
-                    </span>
-                  </label>
                 </div>
               </div>
 

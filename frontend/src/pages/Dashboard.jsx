@@ -18,7 +18,7 @@ const Dashboard = () => {
           </h1>
           <p className="text-lg text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
             AI-powered meeting assistant with real-time transcription, 
-            sign language detection, and multilingual support.
+            intelligent summarization, and autonomous meeting capture.
           </p>
         </div>
 
@@ -41,20 +41,6 @@ const Dashboard = () => {
             </h3>
             <p className="text-gray-600 dark:text-gray-400 text-sm">
               Instant speech-to-text with speaker identification for all participants.
-            </p>
-          </div>
-
-          <div className="p-6 bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-100 dark:border-gray-700">
-            <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900 rounded-lg flex items-center justify-center mb-4">
-              <svg className="w-6 h-6 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
-              </svg>
-            </div>
-            <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">
-              Sign Language Detection
-            </h3>
-            <p className="text-gray-600 dark:text-gray-400 text-sm">
-              ASL detection using AI to make meetings accessible for everyone.
             </p>
           </div>
 

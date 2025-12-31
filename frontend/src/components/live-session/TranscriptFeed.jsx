@@ -53,53 +53,24 @@ const TranscriptFeed = ({ transcripts = [], isLive = false }) => {
       >
         {transcripts.map((transcript, index) => (
           <div key={index} className="flex gap-3 animate-fade-in">
-            {transcript.isSignLanguage ? (
-              // Sign Language Message - Special Styling
-              <div className="w-full">
-                <div className="bg-gradient-to-r from-primary-50 to-primary-100 dark:from-primary-900/30 dark:to-primary-800/30 rounded-lg p-4 border-2 border-primary-300 dark:border-primary-600">
-                  <div className="flex items-center gap-3">
-                    <div className="bg-primary-500 rounded-full p-2">
-                      <span className="text-2xl">🤟</span>
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-baseline gap-2 mb-1">
-                        <span className="font-bold text-primary-700 dark:text-primary-300">
-                          {transcript.speaker}
-                        </span>
-                        <span className="text-xs text-primary-600 dark:text-primary-400">
-                          {formatTimestamp(transcript.timestamp)}
-                        </span>
-                      </div>
-                      <p className="text-gray-900 dark:text-gray-100 font-medium">
-                        {transcript.text}
-                      </p>
-                    </div>
-                  </div>
-                </div>
+            <Avatar speaker={transcript.speaker} size="md" />
+            
+            <div className="flex-1 min-w-0">
+              <div className="flex items-baseline gap-2 mb-1">
+                <span className="font-semibold text-gray-900 dark:text-gray-100">
+                  {transcript.speaker}
+                </span>
+                <span className="text-xs text-gray-500 dark:text-gray-400">
+                  {formatTimestamp(transcript.timestamp)}
+                </span>
               </div>
-            ) : (
-              // Regular Transcript Message
-              <>
-                <Avatar speaker={transcript.speaker} size="md" />
-                
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-baseline gap-2 mb-1">
-                    <span className="font-semibold text-gray-900 dark:text-gray-100">
-                      {transcript.speaker}
-                    </span>
-                    <span className="text-xs text-gray-500 dark:text-gray-400">
-                      {formatTimestamp(transcript.timestamp)}
-                    </span>
-                  </div>
-                  
-                  <div className="bg-gray-100 dark:bg-gray-700 rounded-lg rounded-tl-none p-3">
-                    <p className="text-gray-800 dark:text-gray-200 leading-relaxed">
-                      {transcript.text}
-                    </p>
-                  </div>
-                </div>
-              </>
-            )}
+              
+              <div className="bg-gray-100 dark:bg-gray-700 rounded-lg rounded-tl-none p-3">
+                <p className="text-gray-800 dark:text-gray-200 leading-relaxed">
+                  {transcript.text}
+                </p>
+              </div>
+            </div>
           </div>
         ))}
       </div>

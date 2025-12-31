@@ -61,7 +61,7 @@ const JoinMeetingCard = () => {
       
       <p className="text-gray-600 dark:text-gray-400 mb-6">
         Paste your Google Meet or Zoom link below. The InclusiveBot will join automatically 
-        and provide real-time transcription, sign language detection, and AI-powered insights.
+        and provide real-time transcription, speaker diarization, and AI-powered insights.
       </p>
 
       <div className="space-y-4">

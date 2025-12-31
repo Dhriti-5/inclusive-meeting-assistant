@@ -9,7 +9,6 @@ const MeetingSession = () => {
     // 2. State Management
     const [status, setStatus] = useState("disconnected"); // connected, disconnected
     const [transcripts, setTranscripts] = useState([]);
-    const [currentSign, setCurrentSign] = useState({ word: "IDLE", confidence: 0 });
     const [users, setUsers] = useState(["You", "Bot"]); // Mock user list
     
     // Auto-scroll ref
@@ -62,28 +61,6 @@ const MeetingSession = () => {
                     text: data.text,
                     time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                 }]);
-            }
-
-            // HANDLE: Sign Language Detection
-            if (data.type === "gesture_update") {
-                console.log("🤟 Gesture detected:", data.word);
-                
-                // Update the "Live Status" badge
-                setCurrentSign({
-                    word: data.word.toUpperCase(),
-                    confidence: (data.confidence * 100).toFixed(0)
-                });
-
-                // Optional: If it's a "Sentence Ender", add it to transcript too
-                if (["YES", "NO", "QUESTION", "THANKS", "HELLO"].includes(data.word.toUpperCase())) {
-                     setTranscripts(prev => [...prev, {
-                        id: Date.now() + Math.random(), // Ensure unique ID
-                        speaker: "Sign Interpreter",
-                        text: `[User Signed]: ${data.word.toUpperCase()}`,
-                        isSystem: true,
-                        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                    }]);
-                }
             }
             
             // HANDLE: Bot Status Updates

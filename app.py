@@ -14,14 +14,10 @@ st.set_page_config(
 BACKEND_URL = "http://127.0.0.1:8000/process-audio/"
 
 st.title("🚀 Inclusive Meeting Assistant")
-st.write("A meeting tool designed for everyone. Process past audio recordings or start a live, inclusive session.")
+st.write("A production-grade SaaS platform for autonomous meeting capture and intelligent conversation analysis.")
 
-# --- Create the Tabs ---
-tab1, tab2 = st.tabs(["📁 Process Audio File", "📹 Live Sign Language Session"])
-
-# --- Tab 1: Audio File Processing ---
-with tab1:
-    st.header("Analyze a Recorded Meeting")
+# --- Audio File Processing ---
+st.header("Analyze a Recorded Meeting")
     
     # Your existing UI code for audio processing goes here
     uploaded_file = st.file_uploader(
@@ -67,15 +63,3 @@ with tab1:
 
                 except requests.exceptions.RequestException as e:
                     st.error(f"❌ Could not connect to the backend. Please ensure it's running. Error: {e}")
-
-
-
-st.divider()
-
-# --- Tab 2: Live Sign Language Session ---
-with tab2:
-    st.header("Start a Live Session")
-    st.write("This feature will use your webcam to recognize ASL finger-spelling in real-time.")
-    
-    # We will add the full webcam logic in the next step.
-    st.info("Preparing the live session module...")

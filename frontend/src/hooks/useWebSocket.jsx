@@ -86,17 +86,6 @@ export const useWebSocket = (meetingId, token, options = {}) => {
             onSummary(data.summary, data.action_items);
             break;
 
-          case 'sign_detected':
-            // Sign language detection
-            console.log('🤟 Sign detected:', data.word);
-            onSignDetected({
-              word: data.word,
-              message: data.message,
-              confidence: data.confidence,
-              timestamp: data.timestamp
-            });
-            break;
-
           case 'error':
             // Error notification
             console.error('❌ WebSocket error:', data.error);

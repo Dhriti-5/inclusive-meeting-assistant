@@ -1,14 +1,14 @@
-# **Inclusive Meeting Assistant** 🎙🤝
+# **Inclusive Meeting Assistant** 🎙�
 
-An AI-powered, full-stack web application that makes meetings more **accessible and inclusive** for all participants. Built with **React**, **FastAPI**, **MongoDB**, and cutting-edge AI models, this system provides real-time transcription, sign language recognition, intelligent summarization, and comprehensive meeting analytics.
+A production-grade **SaaS Platform** that autonomously joins meetings, captures conversations, and enables intelligent conversation analysis using **Retrieval Augmented Generation (RAG)**. Built with **React**, **FastAPI**, **MongoDB**, and cutting-edge AI models for enterprise-ready meeting intelligence.
 
 **🌟 Key Highlights:**
 - 🔐 **Full User Authentication** with JWT tokens and MongoDB persistence
-- ⚡ **Real-Time Communication** via WebSockets (no polling)
-- 🤖 **Automated Meeting Bot** for Google Meet integration
-- 🖐 **Dual Sign Language Support** - ML-based and browser-based detection
-- 🎯 **Production-Ready** with responsive React UI and RESTful API
-- 📊 **Complete Meeting Analytics** with speaker diarization and action items
+- ⚡ **Real-Time Communication** via WebSockets (zero-latency updates)
+- 🤖 **Autonomous Meeting Bot** - Joins Google Meet automatically via Puppeteer
+- 🎯 **RAG-Powered Chat** - Ask questions about your past meetings (Coming Soon)
+- 📊 **Speaker Analytics Dashboard** - Visual insights on participation & engagement
+- 🚀 **Production-Ready** with scalable architecture and comprehensive error handling
 
 ---
 
@@ -22,31 +22,20 @@ An AI-powered, full-stack web application that makes meetings more **accessible 
 - **Profile Management** with user preferences
 - **Meeting History** per user with full CRUD operations
 
-### **🎤 2. Speech Recognition & Transcription**
+### **🤖 2. Autonomous Meeting Agent**
+- **Puppeteer-based bot** autonomously joins Google Meet via URL
+- **Automated navigation** through "Ask to Join" / "Admit" flows
+- **Persistent connection** for 30+ minute meetings
+- **Audio capture** directly from meeting stream
+- **Graceful disconnection** with status updates
+
+### **🎤 3. Real-Time Transcription Engine**
 - **OpenAI Whisper** integration for high-accuracy transcription
-- **Real-time audio streaming** from meeting bot
-- **Multiple language support** (English, Hindi, French, etc.)
-- **Live transcript updates** via WebSocket
-- **Speaker-attributed transcription** output
-
-### **🖐 3. Dual Sign Language Recognition**
-
-#### **ML-Based Recognition (Server-Side)**
-- **TensorFlow LSTM model** with 6 basic meeting gestures
-- Gestures: hello, yes, no, question, thanks, idle
-- **>80% confidence threshold** for accuracy
-- **Real-time WebSocket broadcasting** to all participants
-- **Integrated with meeting chat** - signs appear in transcript feed
-- Camera overlay with confidence display
-
-#### **Browser-Based Detection (Client-Side)**
-- **Google MediaPipe** hand landmark detection
-- Recognizes **10 ASL letters** (A, B, C, D, F, I, L, O, V, Y) and **5 numbers** (1-5)
-- **Client-side processing** - privacy-focused (no video upload)
-- GPU-accelerated with 25-30 FPS performance
-- Text accumulation, history, and export features
-
-### **📝 4. Meeting Summarization**
+- **Real-time audio streaming** with <3 second latency
+- **Multiple language support** (English, Hindi, French, Spanish, etc.)
+- **Live transcript updates** via WebSocket (no polling)
+- **Speaker diarization** using pyannote.audio
+- **Speaker-attributed transcription** with timestamps
 - **HuggingFace Transformers** (`distilbart-cnn-12-6`)
 - Condenses lengthy transcripts into concise summaries
 - Multiple summary lengths: brief, detailed, executive
@@ -58,17 +47,35 @@ An AI-powered, full-stack web application that makes meetings more **accessible 
 - Structured bullet-point format
 - Assignee detection and deadline extraction
 
-### **🌍 6. Multilingual Translation**
+### **📝 4. Smart Summarization & Action Items**
+- **HuggingFace Transformers** (`distilbart-cnn-12-6`)
+- **Executive summary** extraction from full transcripts
+- **Action items detection** with assignee identification
+- **Key decisions** highlighting
+- **Meeting notes** generation
+- **Customizable summary length** and detail level
+
+### **💬 5. Chat with Meeting (RAG) - Coming Soon**
+- **Vector database** integration (Pinecone/ChromaDB)
+- **Semantic search** across all meeting transcripts
+- **Contextual Q&A** using GPT-4 or Claude
+- **Ask questions** like "What was the budget discussed in Q3?"
+- **Retrieve specific moments** with timestamps
+- **Cross-meeting insights** and trend analysis
+
+### **📊 6. Speaker Analytics Dashboard - Coming Soon**
+- **Speaking time distribution** pie charts
+- **Participation metrics** per speaker
+- **Sentiment analysis** over meeting timeline
+- **Engagement scores** and energy graphs
+- **Meeting dynamics** visualization
+- **Comparative analytics** across meetings
+
+### **🌍 7. Multilingual Translation**
 - **Helsinki-NLP MarianMT** models
 - Translates transcripts and summaries to multiple languages
 - Supported: English ↔ Hindi, French, Spanish, German, and more
 - Real-time translation option for live meetings
-
-### **🔊 7. Text-to-Speech (TTS)**
-- **pyttsx3** offline TTS engine
-- Converts summaries and action items to audio
-- Multiple voice options and speed control
-- Generates meeting recap audio files
 
 ### **📧 8. Email & PDF Export**
 - **SMTP integration** for automated email delivery
@@ -91,15 +98,7 @@ An AI-powered, full-stack web application that makes meetings more **accessible 
 - **Event-driven architecture** for processing status updates
 - Supports multiple concurrent meetings
 
-### **🤖 11. Automated Meeting Bot**
-- **Puppeteer-based automation** for Google Meet
-- **Automated meeting joining** with URL parsing
-- **Real-time audio capture** using puppeteer-stream
-- **Live transcription streaming** to backend
-- **Headless/visible modes** for debugging
-- **Intelligent join detection** and error handling
-
-### **💻 12. Modern React Frontend**
+### **💻 11. Modern React Frontend**
 - **React 18** with Vite build system
 - **Tailwind CSS** for responsive design
 - **React Router** for navigation

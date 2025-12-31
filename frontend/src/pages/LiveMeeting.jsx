@@ -3,7 +3,6 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { PhoneOff, Settings, Maximize2, Upload } from 'lucide-react'
 import Button from '@/components/shared/Button'
 import TranscriptFeed from '@/components/live-session/TranscriptFeed'
-import SignLanguageCam from '@/components/live-session/SignLanguageCam'
 import ActionItemPanel from '@/components/live-session/ActionItemPanel'
 import LiveSummary from '@/components/live-session/LiveSummary'
 import Loader from '@/components/shared/Loader'
@@ -18,7 +17,6 @@ const LiveMeeting = () => {
   const [transcripts, setTranscripts] = useState([])
   const [actionItems, setActionItems] = useState([])
   const [summaryPoints, setSummaryPoints] = useState([])
-  const [detectedSign, setDetectedSign] = useState(null)
   const [meetingStatus, setMeetingStatus] = useState('connecting')
   const [isUploading, setIsUploading] = useState(false)
   const fileInputRef = useRef(null)
@@ -41,28 +39,6 @@ const LiveMeeting = () => {
     onTranscript: (segment) => {
       console.log('Received transcript segment:', segment)
       setTranscripts(prev => [...prev, segment])
-    },
-    onSignDetected: (signData) => {
-      console.log('Sign language detected:', signData)
-      // Update the detected sign for the camera overlay
-      setDetectedSign({
-        letter: signData.word,
-        confidence: signData.confidence
-      })
-      
-      // Add sign language message to transcript feed
-      const signTranscript = {
-        speaker: 'Sign Language',
-        text: signData.message,
-        timestamp: signData.timestamp,
-        isSignLanguage: true  // Flag to style differently
-      }
-      setTranscripts(prev => [...prev, signTranscript])
-      
-      // Clear the detected sign after 3 seconds
-      setTimeout(() => {
-        setDetectedSign(null)
-      }, 3000)
     },
     onStatus: (status, details) => {
       console.log('Status update:', status, details)
@@ -271,16 +247,9 @@ const LiveMeeting = () => {
             <TranscriptFeed transcripts={transcripts} isLive={true} />
           </div>
 
-          {/* Center Panel - Video & Sign Language (30%) */}
+          {/* Center Panel - Summary (30%) */}
           <div className="col-span-4 space-y-4">
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl overflow-hidden h-[60%]">
-              <SignLanguageCam 
-                isActive={true} 
-                detectedSign={detectedSign}
-              />
-            </div>
-            
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-4 h-[38%] overflow-y-auto custom-scrollbar">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-4 h-full overflow-y-auto custom-scrollbar">
               <LiveSummary summaryPoints={summaryPoints} />
             </div>
           </div>

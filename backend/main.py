@@ -1,8 +1,4 @@
 from pydantic import BaseModel, EmailStr
-import base64
-import numpy as np
-import cv2
-from tensorflow.keras.models import load_model
 import uuid
 import shutil
 import sys
@@ -58,19 +54,6 @@ from models import (
 )
 from websocket_manager import manager
 from bot_audio_processor import bot_manager
-
-# Sign Language Integration Models
-class SignMessage(BaseModel):
-    word: str
-    confidence: float
-    meeting_id: Optional[str] = "global"  # Default to global if not provided
-
-class SignCommand(BaseModel):
-    command: str
-    text: Optional[str] = None
-
-# Global queue for sign language commands (scalable: use Redis in production)
-sign_command_queue: List[str] = []
 
 app = FastAPI()
 
@@ -258,7 +241,7 @@ async def websocket_endpoint(
     try:
         # Keep connection alive and handle incoming messages
         while True:
-            # Wait for messages from client (ping/pong, gestures, etc.)
+            # Wait for messages from client (ping/pong, etc.)
             data = await websocket.receive_json()
             
             # Determine Event Type (The "Contracts")
@@ -266,17 +249,6 @@ async def websocket_endpoint(
             
             if event_type == "ping":
                 await websocket.send_json({"type": "pong"})
-                
-            elif event_type == "gesture":
-                # A sign was detected! Broadcast to everyone in the meeting
-                print(f"🤟 Gesture in {meeting_id}: {data.get('word', 'Unknown')}")
-                await manager.broadcast_to_meeting(meeting_id, {
-                    "type": "gesture_update",
-                    "user": user_email,
-                    "word": data.get("word", "Unknown"),
-                    "confidence": data.get("confidence", 0.0),
-                    "timestamp": datetime.utcnow().isoformat()
-                })
                 
             elif event_type == "transcript":
                 # Audio transcript received - broadcast to all participants
@@ -951,71 +923,8 @@ async def load_models():
         print(f"   {str(e)[:100]}")
         print("   Speaker diarization features will be disabled.")
 
-    # ===== SIGN LANGUAGE MODEL DISABLED - MOVED TO FRONTEND =====
-    # Reason: Model loading causes server instability and crashes
-    # Solution: Using MediaPipe JS in React frontend for real-time detection
-    # This eliminates server load and provides instant client-side processing
-    
-    # Preload the Sign Language classification model - COMMENTED OUT
-    # try:
-    #     print("Loading Sign Language model...")
-    #     ml_models['sign_model'] = load_model("sign_lang_Module/sign_model_v1.h5")
-    #     # Define your labels exactly as used during training
-    #     ml_models['sign_labels'] = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J',
-    #                                 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T',
-    #                                 'U', 'V', 'W', 'X', 'Y', 'Z', 'del', 'nothing', 'space']
-    #     print("✅ Sign Language model loaded.")
-    # except Exception as e:
-    #     print("⚠️  Warning: Sign Language model not available:")
-    #     print(f"   {str(e)[:100]}")
-    #     print("   Sign language detection will be disabled.")
-    
-    print("ℹ️  Sign Language detection will be handled by frontend (MediaPipe JS)")
+# ====== MAIN ENDPOINTS ======
 
-# ===== SIGN LANGUAGE ENDPOINT DISABLED - MOVED TO FRONTEND =====
-# This endpoint is deprecated. Sign language detection now runs client-side
-# using MediaPipe JS in the React frontend for better performance and stability.
-
-# --- Add this new Pydantic model for data validation ---
-# class SignFrame(BaseModel):
-#     image: str  # We'll receive the image as a Base64 encoded string
-
-
-# @app.post("/process_sign_frame/")
-# async def process_sign_frame(sign_frame: SignFrame):
-#     """
-#     [DEPRECATED] Receives a single webcam frame, preprocesses it, and returns the sign prediction.
-#     This endpoint has been disabled. Sign language detection is now handled client-side.
-#     """
-#     model = ml_models.get('sign_model')
-#     labels = ml_models.get('sign_labels')
-
-#     if not model or not labels:
-#         return {"prediction": "error", "detail": "Sign model not loaded."}
-
-#     try:
-#         # Decode the Base64 string which is the standard way to send images over JSON
-#         img_data = base64.b64decode(sign_frame.image)
-#         np_arr = np.frombuffer(img_data, np.uint8)
-#         frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-
-#         # Preprocess the image for your model (must match your training)
-#         img_resized = cv2.resize(frame, (224, 224))
-#         img_normalized = img_resized.astype("float32") / 255.0
-#         img_expanded = np.expand_dims(img_normalized, axis=0)
-        
-#         # Make a prediction
-#         prediction = model.predict(img_expanded)
-#         pred_index = np.argmax(prediction)
-#         pred_label = labels[pred_index]
-        
-#         return {"prediction": pred_label}
-
-#     except Exception as e:
-#         return {"prediction": "error", "detail": str(e)}
-    
-    
-# updated process_audio endpoint:
 @app.post("/process-audio/")
 async def process_audio(audio: UploadFile = File(...), lang: str = Form("en"), email: str = Form(...)):
     try:
@@ -1087,141 +996,6 @@ Team Inclusive AI
 
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
-
-
-@app.post("/process-sign/")
-async def process_sign_text(sign_text: str = Form(...), lang: str = Form("en"), email: str = Form(...)):
-    try:
-        # Save sign text to file
-        with open("output/transcript.txt", "w", encoding="utf-8") as f:
-            f.write(sign_text)
-
-        # Process transcript
-        result = run_pipeline_from_transcript(lang)
-
-        # Generate PDF
-        pdf_path = f"output/sign_summary_{lang}.pdf"
-        generate_pdf(result["summary"], result["translated"], pdf_path)
-
-        # Email body
-        action_items_text = f"\nAction Items:\n{result['action_items']}" if result["action_items"] else ""
-        email_body = f"""Hi,
-
-Thank you for using Inclusive Meeting Assistant. 
-Please find attached the meeting summary in {lang.upper()}.
-{action_items_text}
-Regards,
-Team Inclusive AI
-"""
-
-        send_email_with_attachment(email, "Sign Language Meeting Summary", email_body, pdf_path)
-
-        return {
-            "source": "sign_input",
-            "summary_en": result["summary"],
-            "summary_hi": result["translated"],
-            "summary_audio": result["summary_audio"],
-            "action_items": result["action_items"]
-        }
-
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
-
-
-# ====== SIGN LANGUAGE BRIDGE ENDPOINTS (PHASE 4) ======
-
-@app.post("/api/sign-detected")
-async def receive_sign_detection(sign: SignMessage):
-    """
-    Receive sign language detection from inference.py
-    Converts detected signs into transcript messages that appear in the chat
-    """
-    print(f"🤟 Sign Detected: {sign.word} (confidence: {sign.confidence:.2f}) for meeting: {sign.meeting_id}")
-    
-    # Ignore low confidence and idle state
-    if sign.confidence < 0.8 or sign.word == "idle":
-        return {"status": "ignored", "reason": "Low confidence or idle state"}
-    
-    # Map sign words to meaningful chat messages with emojis
-    message_map = {
-        "question": "🙋 Participant has a question",
-        "hello": "👋 Participant says Hello!",
-        "yes": "✅ Participant agrees",
-        "no": "❌ Participant disagrees",
-        "thanks": "🙏 Participant says Thank You"
-    }
-    
-    message = message_map.get(sign.word)
-    
-    if message:
-        # Broadcast to WebSocket clients for real-time UI updates
-        await manager.broadcast_to_meeting(
-            sign.meeting_id,
-            {
-                "type": "sign_detected",
-                "word": sign.word,
-                "message": message,
-                "confidence": sign.confidence,
-                "timestamp": datetime.utcnow().isoformat()
-            }
-        )
-        
-        print(f"✅ Sign language message broadcasted to meeting {sign.meeting_id}: {message}")
-        
-        return {
-            "status": "success",
-            "message": message,
-            "broadcasted": True
-        }
-    
-    return {
-        "status": "ignored",
-        "reason": f"Unknown sign word: {sign.word}"
-    }
-
-
-@app.get("/api/get-latest-command")
-async def get_latest_sign_command():
-    """
-    Bot polls this endpoint to check for new sign language commands
-    Returns the oldest command in queue (FIFO)
-    """
-    if sign_command_queue:
-        # Pop the first message from queue
-        message = sign_command_queue.pop(0)
-        return {
-            "command": "type",
-            "text": message
-        }
-    
-    return {
-        "command": "none"
-    }
-
-
-@app.get("/api/sign-queue-status")
-async def get_sign_queue_status():
-    """
-    Debug endpoint to check queue status
-    """
-    return {
-        "queue_length": len(sign_command_queue),
-        "pending_messages": sign_command_queue[:5]  # Show first 5
-    }
-
-
-@app.post("/api/clear-sign-queue")
-async def clear_sign_queue():
-    """
-    Admin endpoint to clear the queue if needed
-    """
-    global sign_command_queue
-    cleared_count = len(sign_command_queue)
-    sign_command_queue.clear()
-    return {
-        "status": "cleared",
-        "messages_cleared": cleared_count
-    }
 
 
 if __name__ == "__main__":
