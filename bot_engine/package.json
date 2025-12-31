@@ -1,26 +1,38 @@
 {
-  "name": "gmeet-bot-engine",
-  "version": "1.0.0",
-  "description": "Automated Google Meet bot for audio capture and transcription",
-  "main": "bot_engine.js",
+  "name": "synapse-bot-engine",
+  "version": "2.0.0",
+  "description": "Synapse AI - Autonomous Meeting Agent for Google Meet",
+  "main": "index.js",
   "type": "module",
   "scripts": {
-    "start": "node bot_engine.js",
-    "dev": "node bot_engine.js"
+    "start": "node index.js",
+    "dev": "node index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
     "google-meet",
     "puppeteer",
     "bot",
-    "audio-capture"
+    "audio-capture",
+    "ai",
+    "autonomous-agent",
+    "meeting-assistant"
   ],
-  "author": "",
+  "author": "Synapse AI Team",
   "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "dependencies": {
     "dotenv": "^16.3.1",
     "node-fetch": "^3.3.2",
     "puppeteer": "^24.15.0",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
     "puppeteer-stream": "^3.0.5",
     "ws": "^8.14.2"
+  },
+  "devDependencies": {
+    "eslint": "^8.54.0"
   }
 }
