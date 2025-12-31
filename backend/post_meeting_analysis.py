@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import List, Dict, Any
 
 # Import existing modules
+# Note: We use absolute imports based on the workspace structure
 from speech_Module.whisper_loader import get_whisper_model
 from backend.speaker_diarization import diarize_audio
 from nlp_Module.nlp_pipeline import nlp_pipeline
@@ -18,8 +19,7 @@ async def analyze_meeting(meeting_id: str, audio_path: str):
     3. Alignment
     4. Summarization
     5. Action Item Extraction
-    6. RAG Indexing
-    7. Database Update
+    6. Database Update
     """
     print(f"🧠 [Layer 2] Starting post-meeting analysis for {meeting_id}...")
     
@@ -71,18 +71,7 @@ async def analyze_meeting(meeting_id: str, audio_path: str):
         # Convert bullet points to list
         action_items = [item.strip("- ").strip() for item in action_items_text.split("\n") if item.strip()]
 
-        # 6. RAG Indexing (Feature 4)
-        print("   🔍 Indexing for RAG (Chat with Meeting)...")
-        try:
-            from backend.rag_engine import get_rag_engine
-            rag_engine = get_rag_engine()
-            rag_engine.index_meeting(meeting_id, speaker_aligned_segments)
-            print("   ✅ RAG indexing complete")
-        except Exception as e:
-            print(f"   ⚠️  RAG indexing failed: {e}")
-            # Don't fail the entire analysis if RAG fails
-
-        # 7. Database Update
+        # 6. Database Update
         print("   💾 Saving to database...")
         meetings_collection = get_meetings_collection()
         
@@ -92,8 +81,7 @@ async def analyze_meeting(meeting_id: str, audio_path: str):
             "summary": summary,
             "action_items": action_items,
             "ended_at": datetime.utcnow(),
-            "speaker_aligned": speaker_aligned_segments,
-            "rag_indexed": True  # Mark that RAG indexing was attempted
+            "speaker_aligned": speaker_aligned_segments # Store detailed alignment
         }
         
         await meetings_collection.update_one(

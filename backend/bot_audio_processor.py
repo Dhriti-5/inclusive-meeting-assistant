@@ -15,17 +15,27 @@ import numpy as np
 class BotAudioProcessor:
     """Processes audio streams from the meeting bot"""
     
-    def __init__(self):
+    def __init__(self, meeting_id: str = "temp"):
         self.audio_buffer = bytearray()
         self.sample_rate = 16000
         self.channels = 1
         self.sample_width = 2  # 16-bit audio
-        self.chunk_duration_seconds = 3  # Process every 3 seconds
+        self.chunk_duration_seconds = 5  # Process every 5 seconds
         self.min_chunk_size = self.sample_rate * self.channels * self.sample_width * self.chunk_duration_seconds
         
+        # Full audio recording for post-meeting processing
+        self.meeting_id = meeting_id
+        self.recording_path = f"temp_recordings/{meeting_id}.wav"
+        os.makedirs("temp_recordings", exist_ok=True)
+        self.wave_file = wave.open(self.recording_path, 'wb')
+        self.wave_file.setnchannels(self.channels)
+        self.wave_file.setsampwidth(self.sample_width)
+        self.wave_file.setframerate(self.sample_rate)
+
     def add_audio_chunk(self, chunk: bytes):
-        """Add audio chunk to buffer"""
+        """Add audio chunk to buffer and full recording"""
         self.audio_buffer.extend(chunk)
+        self.wave_file.writeframes(chunk)
     
     def has_enough_data(self) -> bool:
         """Check if buffer has enough data for processing"""
@@ -40,20 +50,44 @@ class BotAudioProcessor:
         chunk = bytes(self.audio_buffer[:self.min_chunk_size])
         
         # Remove processed data from buffer (keep 50% overlap for better continuity)
-        overlap_size = self.min_chunk_size // 2
-        self.audio_buffer = self.audio_buffer[self.min_chunk_size - overlap_size:]
+        # overlap_size = self.min_chunk_size // 2
+        # self.audio_buffer = self.audio_buffer[self.min_chunk_size - overlap_size:]
+        
+        # For real-time transcription, we might not want overlap if we are just appending text
+        # But overlap helps with words cut in half. 
+        # Let's stick to no overlap for simplicity in this "Brain Layer 1" implementation
+        # as we are just appending text segments.
+        self.audio_buffer = bytearray() # Clear buffer after processing to avoid re-processing
         
         return chunk
     
     def clear_buffer(self):
         """Clear the audio buffer"""
         self.audio_buffer.clear()
+
+    def finalize_recording(self):
+        """Close the full audio recording file"""
+        if self.wave_file:
+            self.wave_file.close()
+            self.wave_file = None
+        return self.recording_path
     
     async def process_with_whisper(self, audio_chunk: bytes):
         """
         Process audio chunk with Whisper model
         Returns transcribed text
         """
+        # Optimization: VAD (Voice Activity Detection) to skip silence
+        # Simple energy-based VAD
+        try:
+            audio_array = np.frombuffer(audio_chunk, dtype=np.int16)
+            rms = np.sqrt(np.mean(audio_array**2))
+            # Threshold can be adjusted. 300-500 is usually a good floor for silence in 16-bit audio
+            if rms < 300: 
+                return ""
+        except Exception as e:
+            print(f"⚠️ VAD check failed: {e}")
+
         try:
             # Import whisper model
             from speech_Module.whisper_loader import get_whisper_model
@@ -98,19 +132,34 @@ class BotConnectionManager:
         self.meeting_connections = {}  # meeting_id -> list of client websockets
         
     async def connect_bot(self, websocket: WebSocket, meeting_id: str):
-        """Connect a bot to a meeting"""
-        await websocket.accept()
-        
-        processor = BotAudioProcessor()
+        """Connect a bot to a meeting (websocket already accepted by main endpoint)"""
+        processor = BotAudioProcessor(meeting_id=meeting_id)
         self.bot_connections[meeting_id] = (websocket, processor)
         
         print(f"🤖 Bot connected for meeting: {meeting_id}")
         
     async def disconnect_bot(self, meeting_id: str):
-        """Disconnect bot from meeting"""
+        """Disconnect bot from meeting and trigger post-processing"""
         if meeting_id in self.bot_connections:
+            _, processor = self.bot_connections[meeting_id]
+            
+            # Finalize recording
+            audio_path = processor.finalize_recording()
+            print(f"💾 Meeting audio saved to: {audio_path}")
+            
             del self.bot_connections[meeting_id]
             print(f"🤖 Bot disconnected from meeting: {meeting_id}")
+            
+            # Trigger Post-Meeting Intelligence (Layer 2)
+            try:
+                from .post_meeting_analysis import analyze_meeting
+                # Run in background task
+                asyncio.create_task(analyze_meeting(meeting_id, audio_path))
+                print(f"🚀 Triggered post-meeting analysis for {meeting_id}")
+            except ImportError:
+                print("⚠️  Could not import post_meeting_analysis. Is it created?")
+            except Exception as e:
+                print(f"❌ Failed to trigger analysis: {e}")
     
     async def register_client(self, meeting_id: str, client_ws: WebSocket):
         """Register a client WebSocket to receive bot transcriptions"""

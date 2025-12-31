@@ -50,7 +50,9 @@ from models import (
     MeetingResponse,
     MeetingReport,
     MeetingHistory,
-    TranscriptSegment
+    TranscriptSegment,
+    ChatMessage,
+    ChatResponse
 )
 from websocket_manager import manager
 from bot_audio_processor import bot_manager
@@ -896,6 +898,157 @@ Inclusive Meeting Assistant Team
 async def send_summary_email(request: EmailRequest):
     """[DEPRECATED] Send meeting summary via email - Use /api/meetings/{id}/email instead"""
     return await send_meeting_email(request.meeting_id, request.email)
+
+# ====== CHAT WITH MEETING (RAG) ENDPOINTS ======
+
+@app.post("/api/meetings/{meeting_id}/chat", response_model=ChatResponse)
+async def chat_with_meeting(
+    meeting_id: str,
+    message: ChatMessage,
+    current_user: str = Depends(get_current_user_email)
+):
+    """
+    Chat with meeting transcript using RAG (Retrieval-Augmented Generation)
+    
+    This endpoint allows users to ask questions about the meeting and get
+    answers based on the transcript content with citations.
+    
+    Args:
+        meeting_id: The meeting to query
+        message: Chat message with question
+        current_user: Authenticated user email
+        
+    Returns:
+        ChatResponse with answer, sources, and citations
+        
+    Example:
+        POST /api/meetings/123/chat
+        {
+            "meeting_id": "123",
+            "question": "What did John say about the deadline?"
+        }
+    """
+    try:
+        # Verify meeting exists and user has access
+        meetings_collection = get_meetings_collection()
+        meeting_doc = await meetings_collection.find_one({"_id": meeting_id})
+        
+        if not meeting_doc:
+            raise HTTPException(
+                status_code=404,
+                detail="Meeting not found"
+            )
+        
+        # Check if meeting is completed (RAG only works on processed meetings)
+        if meeting_doc.get("status") != "completed":
+            raise HTTPException(
+                status_code=400,
+                detail="Meeting must be completed before using chat feature"
+            )
+        
+        # Import RAG engine
+        from backend.rag_engine import get_rag_engine
+        rag_engine = get_rag_engine()
+        
+        # Query the meeting
+        result = rag_engine.query_meeting(meeting_id, message.question, top_k=3)
+        
+        # Check for errors
+        if "error" in result:
+            raise HTTPException(
+                status_code=400,
+                detail=result.get("message", "Failed to query meeting")
+            )
+        
+        # Return response
+        return ChatResponse(
+            question=result["question"],
+            answer=result["answer"],
+            sources=result["sources"],
+            meeting_id=meeting_id,
+            timestamp=datetime.utcnow()
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Chat error: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to process chat query: {str(e)}"
+        )
+
+@app.get("/api/meetings/{meeting_id}/chat/health")
+async def check_rag_health(
+    meeting_id: str,
+    current_user: str = Depends(get_current_user_email)
+):
+    """
+    Check if RAG indexing is available for a meeting
+    
+    Returns:
+        Status of RAG availability for the meeting
+    """
+    try:
+        from backend.rag_engine import get_rag_engine
+        rag_engine = get_rag_engine()
+        
+        collection_name = f"meeting_{meeting_id}"
+        try:
+            collection = rag_engine.client.get_collection(name=collection_name)
+            count = collection.count()
+            
+            return {
+                "indexed": True,
+                "meeting_id": meeting_id,
+                "chunk_count": count,
+                "status": "ready"
+            }
+        except:
+            return {
+                "indexed": False,
+                "meeting_id": meeting_id,
+                "chunk_count": 0,
+                "status": "not_indexed",
+                "message": "This meeting has not been indexed for chat yet"
+            }
+            
+    except Exception as e:
+        return {
+            "indexed": False,
+            "meeting_id": meeting_id,
+            "error": str(e),
+            "status": "error"
+        }
+
+@app.delete("/api/meetings/{meeting_id}/chat")
+async def delete_meeting_rag_index(
+    meeting_id: str,
+    current_user: str = Depends(get_current_user_email)
+):
+    """
+    Delete RAG index for a meeting (cleanup)
+    
+    This endpoint removes the vector embeddings for a meeting
+    """
+    try:
+        from backend.rag_engine import get_rag_engine
+        rag_engine = get_rag_engine()
+        rag_engine.delete_meeting_index(meeting_id)
+        
+        return {
+            "success": True,
+            "meeting_id": meeting_id,
+            "message": "RAG index deleted successfully"
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to delete RAG index: {str(e)}"
+        )
+
+# ====== END RAG ENDPOINTS ======
+
 
 # ====== END NEW API ENDPOINTS ======
 # inside app startup:

@@ -88,3 +88,19 @@ class MeetingHistory(BaseModel):
     """Response model for meeting history"""
     meetings: List[MeetingResponse]
     total: int
+# ===========================
+# Chat/RAG Models
+# ===========================
+
+class ChatMessage(BaseModel):
+    """Model for chat messages with meeting context"""
+    meeting_id: str
+    question: str
+    
+class ChatResponse(BaseModel):
+    """Response model for chat queries"""
+    question: str
+    answer: str
+    sources: List[Dict[str, Any]] = []
+    meeting_id: str
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
