@@ -22,6 +22,28 @@ export const useWebSocket = (meetingId, token, options = {}) => {
   const reconnectAttemptsRef = useRef(0);
   const maxReconnectAttempts = 5;
 
+  // Store callbacks in refs to avoid recreating connect function
+  const callbacksRef = useRef({
+    onTranscript,
+    onStatus,
+    onSummary,
+    onSignDetected,
+    onError,
+    onConnected,
+  });
+
+  // Update callbacks ref when they change
+  useEffect(() => {
+    callbacksRef.current = {
+      onTranscript,
+      onStatus,
+      onSummary,
+      onSignDetected,
+      onError,
+      onConnected,
+    };
+  }, [onTranscript, onStatus, onSummary, onSignDetected, onError, onConnected]);
+
   const connect = useCallback(() => {
     if (!meetingId) {
       console.warn('Cannot connect WebSocket: missing meetingId');
@@ -32,6 +54,12 @@ export const useWebSocket = (meetingId, token, options = {}) => {
     const authToken = token || localStorage.getItem('token');
     if (!authToken) {
       console.warn('Cannot connect WebSocket: no authentication token');
+      return;
+    }
+
+    // Don't create a new connection if one already exists and is connecting/open
+    if (wsRef.current && (wsRef.current.readyState === WebSocket.CONNECTING || wsRef.current.readyState === WebSocket.OPEN)) {
+      console.log('⚠️ WebSocket already connected or connecting, skipping...');
       return;
     }
 
@@ -58,7 +86,7 @@ export const useWebSocket = (meetingId, token, options = {}) => {
       setIsConnected(true);
       setConnectionStatus('connected');
       reconnectAttemptsRef.current = 0;
-      onConnected();
+      callbacksRef.current.onConnected();
     };
 
     ws.onmessage = (event) => {
@@ -73,23 +101,23 @@ export const useWebSocket = (meetingId, token, options = {}) => {
 
           case 'transcript':
             // New transcript segment received
-            onTranscript(data.segment);
+            callbacksRef.current.onTranscript(data.segment);
             break;
 
           case 'status':
             // Status update (processing, completed, etc.)
-            onStatus(data.status, data.details);
+            callbacksRef.current.onStatus(data.status, data.details);
             break;
 
           case 'summary':
             // Meeting summary and action items
-            onSummary(data.summary, data.action_items);
+            callbacksRef.current.onSummary(data.summary, data.action_items);
             break;
 
           case 'error':
             // Error notification
             console.error('❌ WebSocket error:', data.error);
-            onError(data.error);
+            callbacksRef.current.onError(data.error);
             break;
 
           default:
@@ -103,7 +131,7 @@ export const useWebSocket = (meetingId, token, options = {}) => {
     ws.onerror = (error) => {
       console.error('❌ WebSocket error:', error);
       setConnectionStatus('error');
-      onError('WebSocket connection error');
+      callbacksRef.current.onError('WebSocket connection error');
     };
 
     ws.onclose = (event) => {
@@ -125,7 +153,7 @@ export const useWebSocket = (meetingId, token, options = {}) => {
         setConnectionStatus('failed');
       }
     };
-  }, [meetingId, token, onTranscript, onStatus, onSummary, onSignDetected, onError, onConnected]);
+  }, [meetingId, token]); // Removed callbacks from dependencies
 
   const disconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) {
@@ -151,25 +179,35 @@ export const useWebSocket = (meetingId, token, options = {}) => {
 
   // Keepalive ping
   useEffect(() => {
-    if (!isConnected) return;
+    if (!isConnected || !wsRef.current) return;
 
     const pingInterval = setInterval(() => {
-      sendMessage('ping');
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ type: 'ping' }));
+        console.log('🏓 Keepalive ping sent');
+      }
     }, 30000); // Ping every 30 seconds
 
     return () => clearInterval(pingInterval);
-  }, [isConnected, sendMessage]);
+  }, [isConnected]);
 
   // Auto-connect on mount
   useEffect(() => {
-    if (autoConnect) {
+    if (autoConnect && meetingId) {
       connect();
     }
 
+    // Cleanup only on unmount
     return () => {
-      disconnect();
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
     };
-  }, [autoConnect, connect, disconnect]);
+  }, [meetingId]); // Only re-connect if meetingId changes
 
   return {
     isConnected,

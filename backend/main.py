@@ -15,18 +15,35 @@ from fastapi.security import OAuth2PasswordRequestForm
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 import asyncio
+import subprocess
+import json
 
 # Append project root to sys.path **before** importing from utils or other root modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # Now safe to import project modules
-from speaker_diarization import diarize_audio, preload_pipeline
-from utils.diarization_utils import (
-    align_transcript_with_diarization,
-    naive_align_text_to_diarization,
-    build_speaker_tagged_text
-)
+# Optional speaker diarization (may fail on Windows due to TorchAudio)
+SPEAKER_DIARIZATION_AVAILABLE = False
+diarize_audio = None
+preload_pipeline = None
+align_transcript_with_diarization = None
+naive_align_text_to_diarization = None
+build_speaker_tagged_text = None
+
+try:
+    from speaker_diarization import diarize_audio, preload_pipeline
+    from utils.diarization_utils import (
+        align_transcript_with_diarization,
+        naive_align_text_to_diarization,
+        build_speaker_tagged_text
+    )
+    SPEAKER_DIARIZATION_AVAILABLE = True
+    print("✅ Speaker diarization loaded successfully")
+except Exception as e:
+    print(f"⚠️  Speaker diarization disabled: {str(e)[:100]}")
+    print("   Other features will work normally")
+
 from utils.pdf_generator import generate_pdf
 from utils.email_utils import send_email_with_attachment
 from pipeline_runner import run_pipeline_from_audio, run_pipeline_from_transcript
@@ -56,6 +73,11 @@ from models import (
 )
 from websocket_manager import manager
 from bot_audio_processor import bot_manager
+import logging
+
+# Setup logger
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
 app = FastAPI()
 
@@ -221,7 +243,11 @@ async def websocket_endpoint(
     # Skip meeting verification for demo sessions
     if not meeting_id.startswith("session_demo"):
         meetings_collection = get_meetings_collection()
-        meeting = await meetings_collection.find_one({"_id": meeting_id})
+        from bson import ObjectId
+        try:
+            meeting = await meetings_collection.find_one({"_id": ObjectId(meeting_id)})
+        except:
+            meeting = None
         
         if not meeting:
             # Also check in-memory for backward compatibility
@@ -348,6 +374,41 @@ async def bot_audio_websocket(websocket: WebSocket):
             await bot_manager.disconnect_bot(meeting_id)
 
 
+# ====== HELPER FUNCTIONS ======
+
+async def trigger_bot_join(meeting_id: str, meeting_url: str):
+    """
+    Trigger the Ora authenticated bot to join a meeting automatically
+    """
+    try:
+        bot_engine_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "bot_engine")
+        
+        # Create environment variables for the bot
+        bot_env = os.environ.copy()
+        bot_env["MEETING_ID"] = meeting_id
+        bot_env["BACKEND_URL"] = "ws://localhost:8000"
+        
+        logger.info(f"🤖 Launching Ora authenticated bot for meeting: {meeting_url}")
+        
+        # Start authenticated bot as a background process
+        # auth_bot.js takes the meeting URL as a command line argument
+        subprocess.Popen(
+            ["node", "auth_bot.js", meeting_url],
+            cwd=bot_engine_path,
+            env=bot_env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            creationflags=subprocess.CREATE_NEW_CONSOLE if sys.platform == "win32" else 0
+        )
+        
+        logger.info(f"✅ Ora authenticated bot triggered for meeting {meeting_id}")
+        logger.info(f"⚠️  IMPORTANT: You must click 'Admit' when 'Ora AI wants to join' appears in the meeting!")
+        return True
+    except Exception as e:
+        logger.error(f"❌ Failed to trigger authenticated bot: {str(e)}")
+        raise
+
+
 # ====== NEW API ENDPOINTS FOR FRONTEND ======
 
 # Pydantic models for request/response
@@ -378,18 +439,24 @@ async def join_meeting(
     
     meeting_id = str(uuid.uuid4())[:8]
     
-    # Create meeting document
+    # Create meeting document with new schema
     meeting_doc = {
         "_id": meeting_id,
         "user_id": str(user_doc["_id"]),
-        "participant_name": request.name,
-        "status": "waiting",  # waiting, processing, completed
+        "title": request.name or "Untitled Meeting",
+        "participant_name": request.name,  # Legacy field
+        "meeting_url": request.url,  # Store the meeting URL
+        "status": "waiting",  # waiting, processing, completed, failed
         "transcript": [],
         "summary": None,
         "action_items": [],
+        "duration_seconds": None,
+        "speaker_stats": {},
         "created_at": datetime.utcnow(),
         "started_at": None,
-        "ended_at": None
+        "ended_at": None,
+        "rag_indexed": False,
+        "audio_url": None
     }
     
     # Insert into MongoDB
@@ -412,6 +479,20 @@ async def join_meeting(
         "participants": []
     }
     
+    # Trigger bot to join meeting automatically
+    try:
+        logger.info(f"🤖 Triggering bot to join meeting {meeting_id}")
+        await trigger_bot_join(meeting_id, request.url)
+        meeting_doc["status"] = "connecting"
+        await meetings_collection.update_one(
+            {"_id": meeting_id},
+            {"$set": {"status": "connecting", "started_at": datetime.utcnow()}}
+        )
+        meetings_db[meeting_id]["status"] = "connecting"
+    except Exception as e:
+        logger.error(f"❌ Failed to trigger bot: {str(e)}")
+        # Don't fail the request, just log the error
+    
     return {
         "success": True,
         "meeting_id": meeting_id,
@@ -427,7 +508,11 @@ async def get_meeting_status(
     """Get current meeting status from MongoDB"""
     meetings_collection = get_meetings_collection()
     
-    meeting = await meetings_collection.find_one({"_id": meeting_id})
+    from bson import ObjectId
+    try:
+        meeting = await meetings_collection.find_one({"_id": ObjectId(meeting_id)})
+    except:
+        meeting = None
     
     # Fallback to in-memory for backward compatibility
     if not meeting:
@@ -457,7 +542,7 @@ async def get_meeting_status(
 # GET /api/meetings/history - Get all meetings (PROTECTED)
 @app.get("/api/meetings/history")
 async def get_meeting_history(current_user: str = Depends(get_current_user_email)):
-    """Get all meetings for authenticated user from MongoDB"""
+    """Get all completed/processing meetings for authenticated user from MongoDB"""
     meetings_collection = get_meetings_collection()
     users_collection = get_users_collection()
     
@@ -466,19 +551,24 @@ async def get_meeting_history(current_user: str = Depends(get_current_user_email
     if not user_doc:
         raise HTTPException(status_code=404, detail="User not found")
     
-    # Get all meetings for this user
-    cursor = meetings_collection.find({"user_id": str(user_doc["_id"])})
+    # Get only completed, processing, manual_join, or recording meetings (not "pending")
+    cursor = meetings_collection.find({
+        "user_id": str(user_doc["_id"]),
+        "status": {"$in": ["completed", "processing", "manual_join", "recording"]}
+    })
     meetings = await cursor.to_list(length=100)
     
     history = []
     for meeting in meetings:
         history.append({
-            "id": meeting["_id"],
-            "name": meeting["participant_name"],
-            "date": meeting["created_at"].isoformat(),
-            "duration": "N/A",
+            "id": str(meeting["_id"]),
+            "title": meeting.get("title", meeting.get("participant_name", "Untitled Meeting")),
+            "name": meeting.get("participant_name", "Unknown"),
+            "date": meeting.get("created_at", meeting.get("started_at", datetime.utcnow())).isoformat() if isinstance(meeting.get("created_at"), datetime) else meeting.get("created_at", str(datetime.utcnow())),
+            "duration": meeting.get("duration", "N/A"),
             "status": meeting["status"],
-            "participants": 1
+            "participants": meeting.get("participants", ["Unknown"]),
+            "summary": meeting.get("summary", "")
         })
     
     # Sort by date descending
@@ -494,7 +584,11 @@ async def get_live_transcript(
     """Get current transcript for a meeting from MongoDB"""
     meetings_collection = get_meetings_collection()
     
-    meeting = await meetings_collection.find_one({"_id": meeting_id})
+    from bson import ObjectId
+    try:
+        meeting = await meetings_collection.find_one({"_id": ObjectId(meeting_id)})
+    except:
+        meeting = None
     
     # Fallback to in-memory
     if not meeting:
@@ -524,8 +618,12 @@ async def upload_meeting_audio(
     """Upload and process audio for a meeting (requires authentication)"""
     meetings_collection = get_meetings_collection()
     
-    # Try MongoDB first
-    meeting_doc = await meetings_collection.find_one({"_id": meeting_id})
+    # Try MongoDB first - convert string to ObjectId
+    from bson import ObjectId
+    try:
+        meeting_doc = await meetings_collection.find_one({"_id": ObjectId(meeting_id)})
+    except:
+        meeting_doc = None
     
     # Fallback to in-memory
     meeting = meetings_db.get(meeting_id)
@@ -544,25 +642,34 @@ async def upload_meeting_audio(
             meeting["status"] = "processing"
             meeting["started_at"] = datetime.now().isoformat()
         
-        # Save audio file
+        # Save audio file - use absolute path
         temp_id = meeting_id
-        audio_path = f"speech_Module/temp_{temp_id}.wav"
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        speech_module_dir = os.path.join(project_root, "speech_Module")
+        os.makedirs(speech_module_dir, exist_ok=True)
+        audio_path = os.path.join(speech_module_dir, f"temp_{temp_id}.wav")
+        
         with open(audio_path, "wb") as buffer:
             shutil.copyfileobj(audio.file, buffer)
 
-        # Send WebSocket update: Diarization starting
-        await manager.send_status_update(meeting_id, "processing", {
-            "message": "Starting speaker diarization...",
-            "stage": "diarization"
-        })
+        # Send WebSocket update: Diarization starting (if available)
+        if SPEAKER_DIARIZATION_AVAILABLE:
+            await manager.send_status_update(meeting_id, "processing", {
+                "message": "Starting speaker diarization...",
+                "stage": "diarization"
+            })
 
-        # Diarization
-        try:
-            diarization_result = diarize_audio(audio_path) or []
-            if meeting:
-                meeting["diarization"] = diarization_result
-        except Exception as e:
-            print("Diarization failed:", e)
+        # Diarization (optional feature)
+        diarization_result = []
+        if SPEAKER_DIARIZATION_AVAILABLE and diarize_audio:
+            try:
+                diarization_result = diarize_audio(audio_path) or []
+                if meeting:
+                    meeting["diarization"] = diarization_result
+            except Exception as e:
+                print("Diarization failed:", e)
+        else:
+            print("⚠️  Speaker diarization skipped (not available)")
             diarization_result = []
 
         # Send WebSocket update: Transcription starting
@@ -630,7 +737,7 @@ async def upload_meeting_audio(
                 action_items_list = [item.strip() for item in action_items_str.split("\n") if item.strip()]
             
             await meetings_collection.update_one(
-                {"_id": meeting_id},
+                {"_id": ObjectId(meeting_id)},
                 {
                     "$set": {
                         "status": "completed",
@@ -655,6 +762,28 @@ async def upload_meeting_audio(
             "message": "Meeting processing completed successfully!",
             "stage": "done"
         })
+        
+        # Index meeting for RAG/Chat (async - don't block response)
+        try:
+            from backend.rag_engine import get_rag_engine
+            rag_engine = get_rag_engine()
+            
+            # Prepare transcript text for indexing
+            if speaker_aligned:
+                transcript_text = "\n".join([f"{seg.get('speaker', 'UNKNOWN')}: {seg.get('text', '')}" for seg in speaker_aligned])
+            else:
+                transcript_text = full_transcript or result.get("summary", "")
+            
+            # Index the meeting
+            rag_engine.index_meeting(
+                meeting_id=meeting_id,
+                transcript=transcript_text,
+                summary=result.get("summary", ""),
+                action_items=result.get("action_items", "")
+            )
+            print(f"✅ Meeting {meeting_id} indexed for chat")
+        except Exception as rag_error:
+            print(f"⚠️  RAG indexing failed (chat will be unavailable): {rag_error}")
 
         return {
             "success": True,
@@ -665,13 +794,18 @@ async def upload_meeting_audio(
         }
 
     except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        logger.error(f"❌ Audio processing failed for meeting {meeting_id}:")
+        logger.error(error_details)
+        
         if meeting:
             meeting["status"] = "error"
         
         # Send WebSocket error
         await manager.send_error(meeting_id, str(e))
         
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        return JSONResponse(status_code=500, content={"error": str(e), "details": error_details})
 
 # POST /api/meetings/{meeting_id}/end - End a meeting (PROTECTED)
 @app.post("/api/meetings/{meeting_id}/end")
@@ -683,10 +817,15 @@ async def end_meeting(
     meetings_collection = get_meetings_collection()
     
     # Try MongoDB first
-    meeting_doc = await meetings_collection.find_one({"_id": meeting_id})
+    from bson import ObjectId
+    try:
+        meeting_doc = await meetings_collection.find_one({"_id": ObjectId(meeting_id)})
+    except:
+        meeting_doc = None
+        
     if meeting_doc:
         await meetings_collection.update_one(
-            {"_id": meeting_id},
+            {"_id": ObjectId(meeting_id)},
             {"$set": {"status": "completed", "ended_at": datetime.utcnow()}}
         )
     
@@ -712,9 +851,13 @@ async def get_meeting_report(
     current_user: str = Depends(get_current_user_email)
 ):
     """Get complete meeting report from MongoDB"""
+    from bson import ObjectId
     meetings_collection = get_meetings_collection()
     
-    meeting_doc = await meetings_collection.find_one({"_id": meeting_id})
+    try:
+        meeting_doc = await meetings_collection.find_one({"_id": ObjectId(meeting_id)})
+    except:
+        meeting_doc = None
     
     # Fallback to in-memory
     if not meeting_doc:
@@ -734,18 +877,22 @@ async def get_meeting_report(
             "status": meeting["status"]
         }
     
-    # Return from MongoDB
+    # Return from MongoDB with new schema
     return {
-        "id": meeting_doc["_id"],
-        "name": meeting_doc["participant_name"],
-        "date": meeting_doc["created_at"].isoformat(),
-        "duration": "N/A",
+        "id": str(meeting_doc["_id"]),
+        "title": meeting_doc.get("title", meeting_doc.get("participant_name", "Untitled Meeting")),
+        "name": meeting_doc.get("participant_name"),
+        "date": meeting_doc["created_at"].isoformat() if meeting_doc.get("created_at") else None,
+        "duration": meeting_doc.get("duration_seconds"),
         "summary": meeting_doc.get("summary", ""),
-        "summary_hi": "",
-        "action_items": "\n".join(meeting_doc.get("action_items", [])),
-        "participants": [],
+        "action_items": meeting_doc.get("action_items", []),
+        "participants": list(meeting_doc.get("speaker_stats", {}).keys()) if meeting_doc.get("speaker_stats") else [],
         "transcript": meeting_doc.get("transcript", []),
-        "status": meeting_doc["status"]
+        "speaker_stats": meeting_doc.get("speaker_stats", {}),
+        "status": meeting_doc["status"],
+        "audio_url": meeting_doc.get("audio_url"),
+        "started_at": meeting_doc.get("started_at").isoformat() if meeting_doc.get("started_at") else None,
+        "ended_at": meeting_doc.get("ended_at").isoformat() if meeting_doc.get("ended_at") else None
     }
 
 # GET /api/meetings/{meeting_id}/actions - Get action items (PROTECTED)
@@ -755,9 +902,13 @@ async def get_action_items(
     current_user: str = Depends(get_current_user_email)
 ):
     """Get action items for a meeting"""
+    from bson import ObjectId
     meetings_collection = get_meetings_collection()
     
-    meeting_doc = await meetings_collection.find_one({"_id": meeting_id})
+    try:
+        meeting_doc = await meetings_collection.find_one({"_id": ObjectId(meeting_id)})
+    except:
+        meeting_doc = None
     
     # Fallback to in-memory
     if not meeting_doc:
@@ -798,9 +949,33 @@ async def download_meeting_pdf(
     current_user: str = Depends(get_current_user_email)
 ):
     """Download meeting report as PDF"""
+    from bson import ObjectId
+    meetings_collection = get_meetings_collection()
+    
+    # Try MongoDB first
+    try:
+        meeting_doc = await meetings_collection.find_one({"_id": ObjectId(meeting_id)})
+    except:
+        meeting_doc = None
+    
+    # Fallback to in-memory
     meeting = meetings_db.get(meeting_id)
-    if not meeting:
+    if not meeting and not meeting_doc:
         return JSONResponse(status_code=404, content={"error": "Meeting not found"})
+    
+    # Use MongoDB doc if available
+    if meeting_doc:
+        meeting = {
+            "meeting_id": str(meeting_doc["_id"]),
+            "name": meeting_doc.get("title", "Meeting"),
+            "summary": meeting_doc.get("summary", ""),
+            "action_items": meeting_doc.get("action_items", []),
+            "transcript": meeting_doc.get("transcript", []),
+            "speaker_aligned": [{"speaker": t.get("speaker"), "text": t.get("text")} for t in meeting_doc.get("transcript", [])],
+            "summary_hi": meeting_doc.get("summary_hi", ""),
+            "created_at": meeting_doc.get("created_at"),
+            "status": meeting_doc.get("status")
+        }
     
     try:
         # Build speaker-tagged text
@@ -833,13 +1008,33 @@ async def send_meeting_email(
     current_user: str = Depends(get_current_user_email)
 ):
     """Send meeting summary via email (requires authentication)"""
+    from bson import ObjectId
     meetings_collection = get_meetings_collection()
     
-    meeting_doc = await meetings_collection.find_one({"_id": meeting_id})
+    # Try MongoDB first
+    try:
+        meeting_doc = await meetings_collection.find_one({"_id": ObjectId(meeting_id)})
+    except:
+        meeting_doc = None
+    
     meeting = meetings_db.get(meeting_id)
     
     if not meeting and not meeting_doc:
         return JSONResponse(status_code=404, content={"error": "Meeting not found"})
+    
+    # Use MongoDB doc if available
+    if meeting_doc:
+        meeting = {
+            "meeting_id": str(meeting_doc["_id"]),
+            "name": meeting_doc.get("title", "Meeting"),
+            "summary": meeting_doc.get("summary", ""),
+            "action_items": meeting_doc.get("action_items", []),
+            "transcript": meeting_doc.get("transcript", []),
+            "speaker_aligned": [{"speaker": t.get("speaker"), "text": t.get("text")} for t in meeting_doc.get("transcript", [])],
+            "summary_hi": meeting_doc.get("summary_hi", ""),
+            "created_at": meeting_doc.get("created_at"),
+            "status": meeting_doc.get("status")
+        }
     
     try:
         # Build speaker-tagged text for PDF
@@ -931,7 +1126,11 @@ async def chat_with_meeting(
     try:
         # Verify meeting exists and user has access
         meetings_collection = get_meetings_collection()
-        meeting_doc = await meetings_collection.find_one({"_id": meeting_id})
+        from bson import ObjectId
+        try:
+            meeting_doc = await meetings_collection.find_one({"_id": ObjectId(meeting_id)})
+        except:
+            meeting_doc = None
         
         if not meeting_doc:
             raise HTTPException(
@@ -1068,13 +1267,16 @@ async def load_models():
         print("⚠️  Warning: failed to preload NLP pipeline:", e)
     
     # preload diarization pipeline (optional; safe to wrap in try)
-    try:
-        preload_pipeline()
-        print("✅ Diarization pipeline loaded.")
-    except Exception as e:
-        print("⚠️  Warning: Diarization pipeline not available:")
-        print(f"   {str(e)[:100]}")
-        print("   Speaker diarization features will be disabled.")
+    if SPEAKER_DIARIZATION_AVAILABLE and preload_pipeline:
+        try:
+            preload_pipeline()
+            print("✅ Diarization pipeline loaded.")
+        except Exception as e:
+            print("⚠️  Warning: Diarization pipeline not available:")
+            print(f"   {str(e)[:100]}")
+            print("   Speaker diarization features will be disabled.")
+    else:
+        print("ℹ️  Diarization pipeline not loaded (feature disabled)")
 
 # ====== MAIN ENDPOINTS ======
 
@@ -1087,11 +1289,14 @@ async def process_audio(audio: UploadFile = File(...), lang: str = Form("en"), e
             shutil.copyfileobj(audio.file, buffer)
 
         # --- Step A: Diarization (safe) ---
-        try:
-            diarization_result = diarize_audio(audio_path) or []
-        except Exception as e:
-            print("Diarization failed, continuing without it:", e)
-            diarization_result = []
+        diarization_result = []
+        if SPEAKER_DIARIZATION_AVAILABLE and diarize_audio:
+            try:
+                diarization_result = diarize_audio(audio_path) or []
+            except Exception as e:
+                print("Diarization failed, continuing without it:", e)
+        else:
+            print("⚠️  Speaker diarization skipped (not available)")
 
         # --- Step B: Run existing pipeline (ASR, summary, etc.) ---
         result = run_pipeline_from_audio(audio_path, lang)
@@ -1149,6 +1354,348 @@ Team Inclusive AI
 
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+# ====== EMAIL INBOX ENDPOINTS ======
+
+from email_inbox_service import EmailInboxService
+from ora_bot_manager import bot_manager
+
+@app.get("/api/inbox/invites")
+async def get_inbox_invites(
+    include_read: bool = True,  # Changed default to True to show all invites
+    email: str = Depends(get_current_user_email)
+):
+    """
+    Get all meeting invites from Ora's email inbox
+    Returns list of unread (or all) emails containing Google Meet links
+    Filters out meetings that already exist in database (any status)
+    """
+    try:
+        inbox_service = EmailInboxService()
+        invites = inbox_service.get_all_meeting_invites(include_read=include_read)
+        
+        # Filter out invites that already have ANY meeting record in DB
+        meetings_collection = get_meetings_collection()
+        users_collection = get_users_collection()
+        user_doc = await users_collection.find_one({"email": email})
+        
+        if user_doc:
+            # Get ALL meetings (any status) with meet links
+            all_meetings = await meetings_collection.find({
+                "user_id": str(user_doc["_id"]),
+                "meet_link": {"$exists": True}
+            }).to_list(length=1000)
+            
+            completed_links = {m.get("meet_link", "").strip() for m in all_meetings if m.get("meet_link")}
+            
+            # Filter invites - hide any that have been joined before
+            invites = [
+                inv for inv in invites 
+                if inv.get("meet_link", "").strip() not in completed_links
+            ]
+        
+        return {
+            "success": True,
+            "count": len(invites),
+            "invites": invites
+        }
+    except Exception as e:
+        logger.error(f"Error fetching inbox invites: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch inbox: {str(e)}"
+        )
+
+@app.post("/api/inbox/mark-read/{email_id}")
+async def mark_invite_read(
+    email_id: str,
+    email: str = Depends(get_current_user_email)
+):
+    """
+    Mark an email invite as read
+    """
+    try:
+        inbox_service = EmailInboxService()
+        inbox_service.mark_as_read(email_id)
+        
+        return {"success": True, "message": "Email marked as read"}
+    except Exception as e:
+        logger.error(f"Error marking email as read: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to mark email as read: {str(e)}"
+        )
+
+@app.post("/api/bot/join-meeting")
+async def join_meeting_from_invite(
+    meet_link: str = Form(...),
+    meeting_title: str = Form(...),
+    email: str = Depends(get_current_user_email)
+):
+    """
+    Join a Google Meet from an invite
+    Starts the bot to join the meeting and begin recording
+    """
+    try:
+        # Get user document to get user_id
+        users_collection = get_users_collection()
+        user_doc = await users_collection.find_one({"email": email})
+        if not user_doc:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Create a meeting record with user_id
+        meetings_collection = get_meetings_collection()
+        
+        meeting_doc = {
+            "user_id": str(user_doc["_id"]),
+            "user_email": email,
+            "title": meeting_title,
+            "participant_name": meeting_title,
+            "meet_link": meet_link,
+            "status": "joining",
+            "created_at": datetime.utcnow(),
+            "bot_status": "starting"
+        }
+        
+        result = await meetings_collection.insert_one(meeting_doc)
+        meeting_id = str(result.inserted_id)
+        
+        # Start the bot using bot manager
+        bot_result = bot_manager.start_bot(meeting_id, meet_link)
+        
+        if bot_result["success"]:
+            # Update meeting with bot process ID
+            await meetings_collection.update_one(
+                {"_id": result.inserted_id},
+                {"$set": {"bot_pid": bot_result["pid"], "bot_status": "joining"}}
+            )
+            
+            return {
+                "success": True,
+                "meeting_id": meeting_id,
+                "message": "Ora is joining the meeting...",
+                "status": "joining",
+                "bot_pid": bot_result["pid"]
+            }
+        else:
+            # Update meeting status to failed
+            await meetings_collection.update_one(
+                {"_id": result.inserted_id},
+                {"$set": {"bot_status": "failed", "status": "failed"}}
+            )
+            
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=bot_result.get("message", "Failed to start bot")
+            )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error joining meeting: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to join meeting: {str(e)}"
+        )
+
+@app.get("/api/bot/status/{meeting_id}")
+async def get_bot_status(
+    meeting_id: str,
+    email: str = Depends(get_current_user_email)
+):
+    """Get bot status for a meeting"""
+    try:
+        status_info = bot_manager.get_bot_status(meeting_id)
+        return {"success": True, **status_info}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/bot/stop/{meeting_id}")
+async def stop_meeting_bot(
+    meeting_id: str,
+    email: str = Depends(get_current_user_email)
+):
+    """Stop bot for a meeting"""
+    try:
+        result = bot_manager.stop_bot(meeting_id)
+        
+        if result["success"]:
+            # Update meeting status in database
+            meetings_collection = get_meetings_collection()
+            await meetings_collection.update_one(
+                {"_id": meeting_id},
+                {"$set": {"bot_status": "stopped", "status": "completed"}}
+            )
+        
+        return result
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/meetings/log-manual")
+async def log_manual_meeting(
+    meet_link: str = Form(...),
+    meeting_title: str = Form(...),
+    email: str = Depends(get_current_user_email)
+):
+    """
+    Log a meeting that was joined manually (from Gmail)
+    This creates a meeting record without starting the bot
+    """
+    try:
+        # Get user document to get user_id
+        users_collection = get_users_collection()
+        user_doc = await users_collection.find_one({"email": email})
+        if not user_doc:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Check if meeting already exists
+        meetings_collection = get_meetings_collection()
+        existing = await meetings_collection.find_one({
+            "user_id": str(user_doc["_id"]),
+            "meet_link": meet_link
+        })
+        
+        if existing:
+            return {
+                "success": True, 
+                "meeting_id": str(existing["_id"]),
+                "message": "Meeting already logged"
+            }
+        
+        # Create a meeting record for manual join
+        meeting_doc = {
+            "user_id": str(user_doc["_id"]),
+            "user_email": email,
+            "title": meeting_title,
+            "participant_name": meeting_title,
+            "meet_link": meet_link,
+            "status": "manual_join",
+            "created_at": datetime.utcnow(),
+            "bot_status": "manual",
+            "manual_join": True
+        }
+        
+        result = await meetings_collection.insert_one(meeting_doc)
+        meeting_id = str(result.inserted_id)
+        
+        return {
+            "success": True,
+            "meeting_id": meeting_id,
+            "message": "Meeting logged successfully. You can upload recording later."
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error logging manual meeting: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to log meeting: {str(e)}"
+        )
+
+@app.post("/api/meetings/start-recording")
+async def start_recording(
+    meet_link: str = Form(...),
+    meeting_title: str = Form(...),
+    email: str = Depends(get_current_user_email)
+):
+    """
+    Start recording for a meeting that user is joining manually from Gmail.
+    Automatically launches audio capture script.
+    """
+    try:
+        # Get user document to get user_id
+        users_collection = get_users_collection()
+        user_doc = await users_collection.find_one({"email": email})
+        if not user_doc:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Check if meeting already exists
+        meetings_collection = get_meetings_collection()
+        existing = await meetings_collection.find_one({
+            "user_id": str(user_doc["_id"]),
+            "meet_link": meet_link
+        })
+        
+        if existing:
+            # Update status to recording
+            await meetings_collection.update_one(
+                {"_id": existing["_id"]},
+                {"$set": {"status": "recording", "bot_status": "recording_system_audio", "updated_at": datetime.utcnow()}}
+            )
+            meeting_id = str(existing["_id"])
+        else:
+            # Create a new meeting record
+            meeting_doc = {
+                "user_id": str(user_doc["_id"]),
+                "user_email": email,
+                "title": meeting_title,
+                "participant_name": meeting_title,
+                "meet_link": meet_link,
+                "status": "recording",
+                "created_at": datetime.utcnow(),
+                "bot_status": "recording_system_audio",
+                "manual_join": True,
+                "instructions": "Audio capture running automatically"
+            }
+            
+            result = await meetings_collection.insert_one(meeting_doc)
+            meeting_id = str(result.inserted_id)
+        
+        logger.info(f"📹 Recording started for meeting: {meeting_id} - {meeting_title}")
+        
+        # Launch audio capture script automatically
+        try:
+            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            capture_script = os.path.join(project_root, "capture_audio.py")
+            
+            # Get JWT token for the user (create a long-lived token)
+            from auth import create_access_token
+            token = create_access_token(data={"sub": email}, expires_delta=timedelta(hours=24))
+            
+            # Launch in new terminal window
+            if sys.platform == "win32":
+                # Windows: Launch in new PowerShell window
+                subprocess.Popen(
+                    ["powershell", "-NoExit", "-Command", 
+                     f"cd '{project_root}'; python capture_audio.py {meeting_id} {token}"],
+                    creationflags=subprocess.CREATE_NEW_CONSOLE
+                )
+            else:
+                # Linux/Mac: Launch in background
+                subprocess.Popen(
+                    ["python3", capture_script, meeting_id, token],
+                    cwd=project_root
+                )
+            
+            logger.info(f"✅ Audio capture script launched automatically for meeting {meeting_id}")
+            
+            return {
+                "success": True,
+                "meeting_id": meeting_id,
+                "message": "Recording started! Audio capture window opened automatically. Now click 'Open in Gmail' to join the meeting.",
+                "auto_capture": True
+            }
+            
+        except Exception as script_error:
+            logger.error(f"⚠️ Failed to auto-launch capture script: {str(script_error)}")
+            # Fallback: Return manual instructions
+            return {
+                "success": True,
+                "meeting_id": meeting_id,
+                "message": f"Recording ready! Run manually: python capture_audio.py {meeting_id}",
+                "auto_capture": False
+            }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error starting recording: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to start recording: {str(e)}"
+        )
 
 
 if __name__ == "__main__":

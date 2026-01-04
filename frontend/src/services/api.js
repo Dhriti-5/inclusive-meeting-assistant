@@ -106,6 +106,13 @@ export const meetingAPI = {
   sendEmail: (meetingId, email) => api.post(`/api/meetings/${meetingId}/email`, null, {
     params: { email }
   }),
+  
+  // Chat with meeting (RAG)
+  chatWithMeeting: (meetingId, question) => 
+    api.post(`/api/meetings/${meetingId}/chat`, { meeting_id: meetingId, question }),
+  
+  // Check RAG availability
+  checkRAGHealth: (meetingId) => api.get(`/api/meetings/${meetingId}/chat/health`),
 }
 
 export default api

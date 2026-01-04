@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { PhoneOff, Settings, Maximize2, Upload } from 'lucide-react'
 import Button from '@/components/shared/Button'
+import ConnectionStatus from '@/components/shared/ConnectionStatus'
 import TranscriptFeed from '@/components/live-session/TranscriptFeed'
 import ActionItemPanel from '@/components/live-session/ActionItemPanel'
 import LiveSummary from '@/components/live-session/LiveSummary'
@@ -22,15 +23,10 @@ const LiveMeeting = () => {
   const fileInputRef = useRef(null)
 
   // Get JWT token from localStorage (for WebSocket authentication)
-  const getAuthToken = () => {
-    // For now, we'll use a demo token. In production, this would come from login
-    // Uncomment when auth is fully implemented:
-    // return localStorage.getItem('token')
-    return 'demo-token'
-  }
+  const authToken = localStorage.getItem('token') || 'demo-token'
 
   // WebSocket connection for real-time updates
-  const { connectionStatus, isConnected } = useWebSocket(meetingId, getAuthToken(), {
+  const { connectionStatus, isConnected } = useWebSocket(meetingId, authToken, {
     onConnected: () => {
       console.log('WebSocket connected')
       setMeetingStatus('connected')
@@ -176,21 +172,15 @@ const LiveMeeting = () => {
   return (
     <div className="min-h-screen bg-gray-900 flex flex-col">
       {/* Top Control Bar */}
-      <div className="bg-gray-800 border-b border-gray-700 px-4 py-3">
+      <div className="bg-gray-800 border-b border-gray-700 px-4 py-3 relative">
+        {/* Connection Status - Top Right */}
+        <div className="absolute top-3 right-4 z-10">
+          <ConnectionStatus status={connectionStatus} />
+        </div>
+        
         <div className="max-w-[1920px] mx-auto flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <div className={`w-3 h-3 rounded-full ${
-                isConnected ? 'bg-green-500' : 'bg-yellow-500 animate-pulse'
-              }`}></div>
-              <span className="text-white font-medium">
-                {isConnected ? 'Live (WebSocket)' : 'Connecting...'}
-              </span>
-            </div>
             <span className="text-gray-400 text-sm">Meeting ID: {meetingId}</span>
-            <span className="text-gray-500 text-xs">
-              Status: {meetingStatus}
-            </span>
           </div>
 
           <div className="flex items-center gap-3">

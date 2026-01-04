@@ -8,7 +8,15 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from nlp_Module.nlp_pipeline import nlp_pipeline
 from speech_Module.transcribe_audio import transcribe_audio as speech_to_text
 from tts_module.text_to_speech import text_to_speech
-from speaker_diarization import diarize_audio
+
+# Optional speaker diarization import (may fail on Windows due to TorchAudio)
+diarize_audio = None
+try:
+    from speaker_diarization import diarize_audio
+    DIARIZATION_AVAILABLE = True
+except Exception as e:
+    DIARIZATION_AVAILABLE = False
+    print(f"⚠️  Speaker diarization not available in pipeline_runner: {str(e)[:80]}")
 
 
 # Language mapping for Google Cloud TTS
@@ -24,9 +32,16 @@ def run_pipeline_from_audio(audio_path, lang="en"):
     """
     Full pipeline: Audio → Diarization → Transcript → Summary → Translation → Action Items → TTS
     """
-    # --- Step 0: Speaker Diarization ---
-    diarization_segments = diarize_audio(audio_path) or []
-    print("Diarization segments:", diarization_segments)
+    # --- Step 0: Speaker Diarization (optional) ---
+    diarization_segments = []
+    if DIARIZATION_AVAILABLE and diarize_audio:
+        try:
+            diarization_segments = diarize_audio(audio_path) or []
+            print("Diarization segments:", diarization_segments)
+        except Exception as e:
+            print(f"⚠️  Diarization failed: {e}")
+    else:
+        print("ℹ️  Diarization skipped (not available)")
 
     # --- Step 1: Transcription ---
     transcript_segments = []

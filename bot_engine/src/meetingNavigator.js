@@ -26,24 +26,51 @@ export class MeetingNavigator {
         timeout: 30000,
       });
 
-      // Step 1: Enter email
-      await this._enterEmail();
+      logger.info('');
+      logger.info('⚠️  GOOGLE SECURITY NOTICE:');
+      logger.info('   If you normally use EDGE browser, Google may block automated Chrome login.');
+      logger.info('');
+      logger.info('✅ SOLUTION: Please LOGIN MANUALLY in the Chrome window');
+      logger.info('   1. Enter your email: ' + config.google.email);
+      logger.info('   2. Enter your password');
+      logger.info('   3. Complete any security checks');
+      logger.info('');
+      logger.info('⏳ Waiting 90 seconds for you to complete login...');
+      logger.info('   (Bot will continue automatically once you\'re logged in)');
+      logger.info('');
 
-      // Wait for navigation
-      await this._waitFor(3000);
+      // Give user plenty of time to login manually
+      await this._waitFor(90000);
 
-      // Step 2: Enter password
-      await this._enterPassword();
-
-      // Wait for login to complete
-      await this._waitFor(5000);
+      // Check if we're logged in by trying to navigate to Google account page
+      try {
+        await this.page.goto('https://myaccount.google.com/', { 
+          waitUntil: 'domcontentloaded',
+          timeout: 10000 
+        });
+        
+        const currentUrl = this.page.url();
+        if (currentUrl.includes('myaccount.google.com')) {
+          this.isAuthenticated = true;
+          logger.success('✅ Authentication successful - You are now logged in!');
+          return true;
+        }
+      } catch (e) {
+        // Continue anyway, might still work
+      }
 
       this.isAuthenticated = true;
-      logger.success('✅ Authentication successful');
+      logger.info('✅ Proceeding (assuming login completed)');
 
       return true;
     } catch (error) {
       logger.error('❌ Authentication failed:', error);
+      logger.info('');
+      logger.info('💡 TIP: If Google keeps blocking:');
+      logger.info('   • Use meeting link that doesn\'t require login');
+      logger.info('   • Or create a dedicated bot Gmail account');
+      logger.info('   • Or disable 2-factor authentication');
+      logger.info('');
       throw error;
     }
   }
@@ -225,60 +252,147 @@ export class MeetingNavigator {
   }
 
   /**
+   * Click button by text content (XPath - more reliable than CSS)
+   */
+  async _clickButtonByText(text, timeoutMs = 5000) {
+    try {
+      const xpath = `//span[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${text.toLowerCase()}')]/ancestor::button | //div[@role='button' and contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${text.toLowerCase()}')]`;
+      
+      await this.page.waitForXPath(xpath, { timeout: timeoutMs });
+      const elements = await this.page.$x(xpath);
+      
+      if (elements.length > 0) {
+        await elements[0].click();
+        logger.success(`   ✅ Clicked "${text}" button`);
+        await this._waitFor(1000);
+        return true;
+      }
+      return false;
+    } catch (e) {
+      logger.warn(`   ⚠️  Could not find "${text}" button: ${e.message}`);
+      return false;
+    }
+  }
+
+  /**
    * Click the join button using multiple strategies
    */
   async _clickJoinButton() {
-    logger.info('   🚪 Looking for join button...');
+    logger.info('   🚪 Looking for join button with multiple strategies...');
 
-    // Strategy 1: Try common button selectors
-    const buttonSelectors = [
-      'button[jsname="Qx7uuf"]', // Join now
+    // Wait for page to fully load
+    await this._waitFor(5000);
+    
+    // Log current page state
+    const currentUrl = this.page.url();
+    logger.info(`   📍 Current URL: ${currentUrl}`);
+    
+    // Take a screenshot for debugging
+    try {
+      await this.page.screenshot({ path: `./join_button_search_${Date.now()}.png`, fullPage: true });
+      logger.info('   📸 Screenshot saved for debugging');
+    } catch (e) {
+      // Ignore screenshot errors
+    }
+    
+    // Strategy 1: XPath text-based search (MOST RELIABLE)
+    logger.info('   🔍 Strategy 1: XPath text-based search...');
+    const buttonTexts = [
+      'ask to join',
+      'join now', 
+      'join meeting',
+      'join call',
+      'join',
+      'present',
+      'rejoindre' // French
+    ];
+    
+    for (const text of buttonTexts) {
+      logger.info(`   🎯 Searching for button with text: "${text}"`);
+      
+      // Try button, span, and div elements
+      const xpaths = [
+        `//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${text}')]`,
+        `//span[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${text}')]/ancestor::button`,
+        `//div[@role='button' and contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${text}')]`
+      ];
+      
+      for (const xpath of xpaths) {
+        try {
+          const elements = await this.page.$x(xpath);
+          
+          if (elements && elements.length > 0) {
+            logger.info(`   ✨ Found ${elements.length} matching element(s)`);
+            
+            // Try clicking the first visible element
+            for (const element of elements) {
+              try {
+                const isVisible = await element.isIntersectingViewport();
+                if (isVisible) {
+                  await element.click();
+                  logger.success(`   ✅ Successfully clicked button with text "${text}"`);
+                  await this._waitFor(3000);
+                  return true;
+                }
+              } catch (clickErr) {
+                logger.info(`   ⚠️  Click failed: ${clickErr.message}`);
+              }
+            }
+          }
+        } catch (e) {
+          // Continue to next XPath
+        }
+      }
+    }
+    
+    // Strategy 2: CSS selectors for Google Meet's specific classes
+    logger.info('   🔍 Strategy 2: CSS selectors...');
+    const cssSelectors = [
+      'button[jsname="Qx7uuf"]',
       'div[role="button"][jsname="Qx7uuf"]',
-      'span[jsname="V67aGc"]',
+      'button[aria-label*="Join"]',
+      'button[aria-label*="join"]',
+      'div[role="button"][aria-label*="Join"]',
+      'button.VfPpkd-LgbsSe', // Material Design button
     ];
 
-    for (const selector of buttonSelectors) {
+    for (const selector of cssSelectors) {
       try {
-        const element = await this.page.waitForSelector(selector, {
-          timeout: 5000,
-          visible: true,
-        });
+        logger.info(`   🎯 Trying selector: ${selector}`);
+        const element = await this.page.$(selector);
         
         if (element) {
-          await element.click();
-          logger.success(`   ✅ Clicked join button (${selector})`);
-          return true;
+          const isVisible = await element.isIntersectingViewport();
+          if (isVisible) {
+            await element.click();
+            logger.success(`   ✅ Successfully clicked via CSS: ${selector}`);
+            await this._waitFor(3000);
+            return true;
+          }
         }
       } catch (e) {
-        // Try next selector
-        continue;
+        // Continue to next selector
       }
     }
 
-    // Strategy 2: Try XPath for text-based search
-    logger.info('   Trying XPath fallback...');
-    const joinTexts = ['Join now', 'Ask to join', 'Join', 'Rejoindre'];
+    // Strategy 3: Manual fallback with detailed instructions
+    logger.error('   ❌ Could NOT find join button automatically');
+    logger.warn('   ⚠️  THIS NEEDS YOUR ATTENTION!');
+    logger.info('');
+    logger.info('   📸 Check the screenshot file: join_button_search_*.png');
+    logger.info('   👆 Please manually click the "Join now" or "Ask to join" button');
+    logger.info('   ⏳ Waiting 45 seconds for manual join...');
+    logger.info('');
     
-    for (const text of joinTexts) {
-      try {
-        const xpath = `//button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${text.toLowerCase()}')]`;
-        const buttons = await this.page.$x(xpath);
-        
-        if (buttons.length > 0) {
-          await buttons[0].click();
-          logger.success(`   ✅ Clicked join button via XPath ("${text}")`);
-          return true;
-        }
-      } catch (e) {
-        continue;
-      }
+    await this._waitFor(45000);
+    
+    // Take another screenshot after manual join
+    try {
+      await this.page.screenshot({ path: `./after_manual_join_${Date.now()}.png`, fullPage: true });
+      logger.info('   📸 After-join screenshot saved');
+    } catch (e) {
+      // Ignore
     }
-
-    // Strategy 3: Manual fallback
-    logger.warn('   ⚠️  Could not find join button automatically');
-    logger.info('   👆 Please click "Join now" manually in the browser');
-    logger.info('   ⏳ Waiting 30 seconds...');
-    await this._waitFor(30000);
     
     return true; // Assume user clicked it
   }

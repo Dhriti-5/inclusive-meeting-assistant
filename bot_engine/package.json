@@ -1,12 +1,13 @@
 {
-  "name": "synapse-bot-engine",
+  "name": "ora-bot-engine",
   "version": "2.0.0",
-  "description": "Synapse AI - Autonomous Meeting Agent for Google Meet",
+  "description": "Ora - Autonomous Meeting Agent for Google Meet",
   "main": "index.js",
   "type": "module",
   "scripts": {
     "start": "node index.js",
     "dev": "node index.js",
+    "guest": "node guest_bot.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
@@ -16,15 +17,18 @@
     "audio-capture",
     "ai",
     "autonomous-agent",
-    "meeting-assistant"
+    "meeting-assistant",
+    "ora"
   ],
-  "author": "Synapse AI Team",
+  "author": "Ora Team",
   "license": "MIT",
   "engines": {
     "node": ">=18.0.0"
   },
   "dependencies": {
+    "axios": "^1.13.2",
     "dotenv": "^16.3.1",
+    "form-data": "^4.0.5",
     "node-fetch": "^3.3.2",
     "puppeteer": "^24.15.0",
     "puppeteer-extra": "^3.3.6",

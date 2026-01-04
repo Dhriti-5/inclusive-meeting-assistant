@@ -3,3 +3,10 @@
 gcp_credentials.json
 *.pyc
 __pycache__/
+
+# Bot Authentication - NEVER COMMIT THESE!
+ora_cookies.json
+cookies_base64.txt
+bot_engine/ora_cookies.json
+bot_engine/cookies_base64.txt
+bot_engine/.bot-profile/

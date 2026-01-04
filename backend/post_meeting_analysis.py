@@ -68,10 +68,46 @@ async def analyze_meeting(meeting_id: str, audio_path: str):
         # 5. Action Item Extraction
         print("   ✅ Extracting action items...")
         action_items_text = nlp_pipeline.extract_action_items(summary)
-        # Convert bullet points to list
-        action_items = [item.strip("- ").strip() for item in action_items_text.split("\n") if item.strip()]
+        # Convert bullet points to structured action items
+        action_items = []
+        for item in action_items_text.split("\n"):
+            item_text = item.strip("- ").strip()
+            if item_text:
+                action_items.append({
+                    "task": item_text,
+                    "assignee": None,
+                    "status": "pending",
+                    "created_at": datetime.utcnow()
+                })
 
-        # 6. Database Update
+        # Calculate speaker statistics
+        print("   📊 Calculating speaker statistics...")
+        speaker_stats = {}
+        total_duration = 0
+        
+        for segment in speaker_aligned_segments:
+            speaker = segment.get("speaker", "Unknown")
+            start = segment.get("start", segment.get("timestamp", 0))
+            end = segment.get("end", start)
+            duration = end - start
+            
+            if speaker not in speaker_stats:
+                speaker_stats[speaker] = 0
+            speaker_stats[speaker] += duration
+            total_duration += duration
+
+        # 6. RAG Indexing (Feature 4)
+        print("   🔍 Indexing for RAG (Chat with Meeting)...")
+        try:
+            from backend.rag_engine import get_rag_engine
+            rag_engine = get_rag_engine()
+            rag_engine.index_meeting(meeting_id, speaker_aligned_segments)
+            print("   ✅ RAG indexing complete")
+        except Exception as e:
+            print(f"   ⚠️  RAG indexing failed: {e}")
+            # Don't fail the entire analysis if RAG fails
+
+        # 7. Database Update
         print("   💾 Saving to database...")
         meetings_collection = get_meetings_collection()
         
@@ -80,8 +116,10 @@ async def analyze_meeting(meeting_id: str, audio_path: str):
             "transcript": speaker_aligned_segments,
             "summary": summary,
             "action_items": action_items,
+            "duration_seconds": total_duration,
+            "speaker_stats": speaker_stats,
             "ended_at": datetime.utcnow(),
-            "speaker_aligned": speaker_aligned_segments # Store detailed alignment
+            "rag_indexed": True
         }
         
         await meetings_collection.update_one(

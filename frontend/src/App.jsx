@@ -5,6 +5,7 @@ import ProtectedRoute from './components/ProtectedRoute'
 import Dashboard from './pages/Dashboard'
 import LiveMeeting from './pages/LiveMeeting'
 import MeetingReport from './pages/MeetingReport'
+import MeetingDetails from './pages/MeetingDetails'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import Profile from './pages/Profile'
@@ -30,6 +31,11 @@ function App() {
               <Route path="/meeting/:meetingId" element={
                 <ProtectedRoute>
                   <LiveMeeting />
+                </ProtectedRoute>
+              } />
+              <Route path="/meeting-details/:meetingId" element={
+                <ProtectedRoute>
+                  <MeetingDetails />
                 </ProtectedRoute>
               } />
               <Route path="/report/:meetingId" element={

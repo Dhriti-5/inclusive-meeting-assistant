@@ -40,7 +40,7 @@ export const config = {
 
   // Browser Configuration
   browser: {
-    headless: process.env.HEADLESS === 'true',
+    headless: false, // DISABLED FOR DEBUGGING - Set to true in production
     viewport: {
       width: parseInt(process.env.VIEWPORT_WIDTH) || 1280,
       height: parseInt(process.env.VIEWPORT_HEIGHT) || 720,
@@ -57,7 +57,7 @@ export const config = {
       '--disable-features=IsolateOrigins,site-per-process',
       '--autoplay-policy=no-user-gesture-required',
       '--disable-dev-shm-usage',
-      '--disable-gpu',
+      '--window-size=1280,720',
     ],
   },
 

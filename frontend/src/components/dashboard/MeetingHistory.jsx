@@ -1,28 +1,55 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Clock, FileText, Download, Calendar, CheckCircle2, AlertCircle } from 'lucide-react'
+import { Clock, FileText, Download, Calendar, CheckCircle2, AlertCircle, Upload } from 'lucide-react'
 import Card from '@/components/shared/Card'
 import Button from '@/components/shared/Button'
 import Badge from '@/components/shared/Badge'
 import Loader from '@/components/shared/Loader'
 import { formatTimestamp, formatDuration } from '@/utils/helpers'
 import { meetingAPI } from '@/services/api'
+import axios from 'axios'
+
+const API_BASE_URL = 'http://localhost:8000'
 
 const MeetingHistory = () => {
   const [meetings, setMeetings] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [hasProcessing, setHasProcessing] = useState(false)
   const navigate = useNavigate()
 
   useEffect(() => {
     fetchMeetingHistory()
   }, [])
+  
+  useEffect(() => {
+    // Only set up auto-refresh if there are processing/recording meetings
+    if (!hasProcessing) return
+    
+    const interval = setInterval(() => {
+      console.log('Auto-refreshing due to processing meetings...')
+      fetchMeetingHistory()
+    }, 15000) // Every 15 seconds (not too frequent)
+    
+    return () => clearInterval(interval)
+  }, [hasProcessing])
 
   const fetchMeetingHistory = async () => {
     try {
       setIsLoading(true)
       const response = await meetingAPI.getMeetingHistory()
-      setMeetings(response.data.meetings || [])
+      const fetchedMeetings = response.data.meetings || []
+      setMeetings(fetchedMeetings)
+      
+      // Check if any meetings are still processing
+      const processing = fetchedMeetings.some(m => m.status === 'processing' || m.status === 'recording')
+      setHasProcessing(processing)
+      
+      if (processing) {
+        console.log('Found processing meetings, will auto-refresh')
+      } else {
+        console.log('No processing meetings, auto-refresh disabled')
+      }
     } catch (err) {
       setError('Failed to load meeting history')
       console.error(err)
@@ -55,7 +82,8 @@ const MeetingHistory = () => {
   const getStatusBadge = (status) => {
     const statusConfig = {
       completed: { variant: 'success', icon: CheckCircle2, text: 'Completed' },
-      processing: { variant: 'warning', icon: AlertCircle, text: 'Processing' },
+      processing: { variant: 'warning', icon: AlertCircle, text: 'Processing...' },
+      recording: { variant: 'info', icon: AlertCircle, text: 'Waiting for Upload' },
       failed: { variant: 'danger', icon: AlertCircle, text: 'Failed' },
     }
 
@@ -68,6 +96,61 @@ const MeetingHistory = () => {
         {config.text}
       </Badge>
     )
+  }
+
+  const handleUploadAudio = async (meetingId) => {
+    // Show instructions first
+    const shouldProceed = window.confirm(
+      '📁 Upload Audio File\n\n' +
+      'The audio file should be in:\n' +
+      'C:\\Users\\Pc\\Deep Learning Specialization\\inclusive-meeting-assistant\\recordings\\\n\n' +
+      'File name format:\n' +
+      `meeting_${meetingId}_YYYYMMDD_HHMMSS.wav\n\n` +
+      'Or if you recorded manually:\n' +
+      '- OBS recordings: Usually in Videos folder\n' +
+      '- Game Bar: Videos\\Captures folder\n' +
+      '- Any .wav, .mp3, or .mp4 file with meeting audio\n\n' +
+      'Click OK to select the file.'
+    )
+    
+    if (!shouldProceed) return
+    
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'audio/*,video/*'
+    
+    input.onchange = async (e) => {
+      const file = e.target.files[0]
+      if (!file) return
+      
+      try {
+        const formData = new FormData()
+        formData.append('audio', file)
+        
+        const token = localStorage.getItem('token')
+        
+        alert('⏳ Uploading audio file... This may take a minute.')
+        
+        await axios.post(
+          `${API_BASE_URL}/api/meetings/${meetingId}/upload-audio`,
+          formData,
+          {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'multipart/form-data'
+            }
+          }
+        )
+        
+        alert('✅ Audio uploaded successfully! Processing will start now.\n\nRefresh the page in a few minutes to see the results.')
+        fetchMeetingHistory()
+      } catch (error) {
+        console.error('Error uploading audio:', error)
+        alert('❌ Failed to upload audio. Please try again.\n\nError: ' + (error.response?.data?.detail || error.message))
+      }
+    }
+    
+    input.click()
   }
 
   if (isLoading) {
@@ -149,6 +232,16 @@ const MeetingHistory = () => {
               </div>
 
               <div className="flex items-center gap-2">
+                {meeting.status === 'recording' && (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => handleUploadAudio(meeting.id)}
+                    leftIcon={<Upload className="w-4 h-4" />}
+                  >
+                    Upload Audio
+                  </Button>
+                )}
                 {meeting.status === 'completed' && (
                   <>
                     <Button

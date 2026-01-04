@@ -11,6 +11,9 @@ import Card from '@/components/shared/Card'
 import Badge from '@/components/shared/Badge'
 import Loader from '@/components/shared/Loader'
 import Avatar from '@/components/shared/Avatar'
+import SpeakerAnalytics from '@/components/dashboard/SpeakerAnalytics'
+import AudioTimeline from '@/components/dashboard/AudioTimeline'
+import ChatPanel from '@/components/dashboard/ChatPanel'
 import { meetingAPI } from '@/services/api'
 import { formatTimestamp, formatDuration } from '@/utils/helpers'
 
@@ -21,6 +24,7 @@ const MeetingReport = () => {
   const [isLoading, setIsLoading] = useState(true)
   const [report, setReport] = useState(null)
   const [error, setError] = useState(null)
+  const [selectedLanguage, setSelectedLanguage] = useState('en') // 'en' or 'hi' for translation
 
   useEffect(() => {
     fetchReport()
@@ -172,19 +176,59 @@ const MeetingReport = () => {
           </div>
         </div>
 
-        {/* Summary Section */}
+        {/* Summary Section with Language Toggle */}
         <Card className="mb-6">
-          <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2">
-            <FileText className="w-5 h-5 text-primary-600 dark:text-primary-400" />
-            Meeting Summary
-          </h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+              <FileText className="w-5 h-5 text-primary-600 dark:text-primary-400" />
+              Meeting Summary
+            </h2>
+            {/* Language Selector - Only show if Hindi translation exists */}
+            {report.summary_hi && (
+              <div className="flex gap-2">
+                <Button
+                  variant={selectedLanguage === 'en' ? 'primary' : 'outline'}
+                  onClick={() => setSelectedLanguage('en')}
+                  size="sm"
+                >
+                  English
+                </Button>
+                <Button
+                  variant={selectedLanguage === 'hi' ? 'primary' : 'outline'}
+                  onClick={() => setSelectedLanguage('hi')}
+                  size="sm"
+                >
+                  हिन्दी (Hindi)
+                </Button>
+              </div>
+            )}
+          </div>
           <div className="prose dark:prose-invert max-w-none">
             <p className="text-gray-700 dark:text-gray-300 leading-relaxed">
-              {report.summary || 'No summary available.'}
+              {selectedLanguage === 'hi' && report.summary_hi 
+                ? report.summary_hi 
+                : (report.summary || 'No summary available.')}
             </p>
           </div>
         </Card>
+        {/* Speaker Analytics - NEW */}
+        {report.transcript && report.transcript.length > 0 && (
+          <div className="mb-6">
+            <SpeakerAnalytics transcript={report.transcript} />
+          </div>
+        )}
 
+        {/* Audio Timeline - NEW */}
+        {report.audioUrl && report.transcript && (
+          <div className="mb-6">
+            <AudioTimeline 
+              transcript={report.transcript} 
+              audioUrl={report.audioUrl}
+            />
+          </div>
+        )}
+
+        {/* Action Items */}
         {/* Action Items */}
         {report.actionItems && report.actionItems.length > 0 && (
           <Card className="mb-6">
@@ -241,6 +285,11 @@ const MeetingReport = () => {
             </div>
           </Card>
         )}
+
+        {/* Chat with Meeting (RAG) - NEW FEATURE */}
+        <div className="mb-6">
+          <ChatPanel meetingId={meetingId} />
+        </div>
 
         {/* Full Transcript */}
         {report.transcript && (
