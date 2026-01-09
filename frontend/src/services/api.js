@@ -107,6 +107,17 @@ export const meetingAPI = {
     params: { email }
   }),
   
+  // Update meeting title
+  updateMeetingTitle: (meetingId, newTitle) => {
+    const formData = new FormData()
+    formData.append('title', newTitle)
+    return api.put(`/api/meetings/${meetingId}/title`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    })
+  },
+  
   // Chat with meeting (RAG)
   chatWithMeeting: (meetingId, question) => 
     api.post(`/api/meetings/${meetingId}/chat`, { meeting_id: meetingId, question }),

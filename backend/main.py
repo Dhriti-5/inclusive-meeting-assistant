@@ -1220,6 +1220,74 @@ async def check_rag_health(
             "status": "error"
         }
 
+@app.put("/api/meetings/{meeting_id}/title")
+async def update_meeting_title(
+    meeting_id: str,
+    title: str = Form(...),
+    current_user_email: str = Depends(get_current_user_email)
+):
+    """
+    Update meeting title
+    
+    Allows users to rename/edit meeting titles for better organization
+    """
+    try:
+        from bson import ObjectId
+        meetings_collection = get_meetings_collection()
+        
+        # Try to find meeting by ObjectId first
+        try:
+            result = await meetings_collection.update_one(
+                {"_id": ObjectId(meeting_id), "user_email": current_user_email},
+                {"$set": {"title": title}}
+            )
+        except:
+            # Fallback to string meeting_id
+            result = await meetings_collection.update_one(
+                {"meeting_id": meeting_id, "user_email": current_user_email},
+                {"$set": {"title": title}}
+            )
+        
+        if result.modified_count > 0:
+            return {
+                "success": True,
+                "message": "Meeting title updated successfully",
+                "meeting_id": meeting_id,
+                "new_title": title
+            }
+        else:
+            # Check if meeting exists but no changes were made
+            try:
+                existing = await meetings_collection.find_one(
+                    {"_id": ObjectId(meeting_id), "user_email": current_user_email}
+                )
+            except:
+                existing = await meetings_collection.find_one(
+                    {"meeting_id": meeting_id, "user_email": current_user_email}
+                )
+            
+            if existing:
+                return {
+                    "success": True,
+                    "message": "Title is already set to this value",
+                    "meeting_id": meeting_id,
+                    "new_title": title
+                }
+            else:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Meeting not found or you don't have permission to edit it"
+                )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating meeting title: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to update meeting title: {str(e)}"
+        )
+
 @app.delete("/api/meetings/{meeting_id}/chat")
 async def delete_meeting_rag_index(
     meeting_id: str,

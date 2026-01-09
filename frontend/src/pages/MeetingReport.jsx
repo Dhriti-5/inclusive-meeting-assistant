@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { 
   ArrowLeft, Download, Mail, FileText, 
-  CheckCircle2, Clock, Users, Calendar 
+  CheckCircle2, Clock, Users, Calendar, Edit2, Check, X 
 } from 'lucide-react'
 import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
@@ -25,6 +25,9 @@ const MeetingReport = () => {
   const [report, setReport] = useState(null)
   const [error, setError] = useState(null)
   const [selectedLanguage, setSelectedLanguage] = useState('en') // 'en' or 'hi' for translation
+  const [isEditingTitle, setIsEditingTitle] = useState(false)
+  const [editedTitle, setEditedTitle] = useState('')
+  const [isSavingTitle, setIsSavingTitle] = useState(false)
 
   useEffect(() => {
     fetchReport()
@@ -35,6 +38,7 @@ const MeetingReport = () => {
       setIsLoading(true)
       const response = await meetingAPI.getMeetingReport(meetingId)
       setReport(response.data)
+      setEditedTitle(response.data.title || 'Meeting Summary')
     } catch (err) {
       setError('Failed to load meeting report')
       console.error(err)
@@ -78,6 +82,39 @@ const MeetingReport = () => {
       console.error('Failed to send email:', err)
       const errorMessage = err.response?.data?.error || 'Failed to send email. Please try again.'
       alert(errorMessage)
+    }
+  }
+
+  const handleEditTitle = () => {
+    setIsEditingTitle(true)
+  }
+
+  const handleCancelEdit = () => {
+    setIsEditingTitle(false)
+    setEditedTitle(report.title || 'Meeting Summary')
+  }
+
+  const handleSaveTitle = async () => {
+    if (!editedTitle.trim()) {
+      alert('Title cannot be empty')
+      return
+    }
+
+    if (editedTitle === report.title) {
+      setIsEditingTitle(false)
+      return
+    }
+
+    try {
+      setIsSavingTitle(true)
+      await meetingAPI.updateMeetingTitle(meetingId, editedTitle)
+      setReport({ ...report, title: editedTitle })
+      setIsEditingTitle(false)
+    } catch (err) {
+      console.error('Failed to update title:', err)
+      alert('Failed to update meeting title. Please try again.')
+    } finally {
+      setIsSavingTitle(false)
     }
   }
 
@@ -131,10 +168,52 @@ const MeetingReport = () => {
         {/* Header */}
         <div className="mb-8">
           <div className="flex items-start justify-between mb-4">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">
-                {report.title || 'Meeting Summary'}
-              </h1>
+            <div className="flex-1">
+              {isEditingTitle ? (
+                <div className="flex items-center gap-2 mb-2">
+                  <input
+                    type="text"
+                    value={editedTitle}
+                    onChange={(e) => setEditedTitle(e.target.value)}
+                    className="text-3xl font-bold text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 border-2 border-primary-500 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleSaveTitle()
+                      if (e.key === 'Escape') handleCancelEdit()
+                    }}
+                    disabled={isSavingTitle}
+                  />
+                  <button
+                    onClick={handleSaveTitle}
+                    disabled={isSavingTitle}
+                    className="p-2 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded transition-colors"
+                    title="Save"
+                  >
+                    <Check className="w-5 h-5" />
+                  </button>
+                  <button
+                    onClick={handleCancelEdit}
+                    disabled={isSavingTitle}
+                    className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
+                    title="Cancel"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 mb-2">
+                  <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
+                    {report.title || 'Meeting Summary'}
+                  </h1>
+                  <button
+                    onClick={handleEditTitle}
+                    className="p-2 text-gray-500 hover:text-primary-600 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+                    title="Edit title"
+                  >
+                    <Edit2 className="w-5 h-5" />
+                  </button>
+                </div>
+              )}
               <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600 dark:text-gray-400">
                 <div className="flex items-center gap-1">
                   <Calendar className="w-4 h-4" />

@@ -9,9 +9,13 @@ import {
   Users,
   CheckCircle,
   ArrowLeft,
-  Sparkles
+  Sparkles,
+  Edit2,
+  Check,
+  X
 } from 'lucide-react'
 import axios from 'axios'
+import { meetingAPI } from '@/services/api'
 import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
 
@@ -26,6 +30,9 @@ const MeetingDetails = () => {
   const [emailModalOpen, setEmailModalOpen] = useState(false)
   const [emailRecipient, setEmailRecipient] = useState('')
   const [sendingEmail, setSendingEmail] = useState(false)
+  const [isEditingTitle, setIsEditingTitle] = useState(false)
+  const [editedTitle, setEditedTitle] = useState('')
+  const [isSavingTitle, setIsSavingTitle] = useState(false)
 
   useEffect(() => {
     fetchMeetingDetails()
@@ -39,6 +46,7 @@ const MeetingDetails = () => {
         { headers: { Authorization: `Bearer ${token}` } }
       )
       setMeeting(response.data)
+      setEditedTitle(response.data.title || 'Meeting Summary')
     } catch (error) {
       console.error('Error fetching meeting:', error)
     } finally {
@@ -104,6 +112,40 @@ const MeetingDetails = () => {
       alert('❌ Failed to send email')
     } finally {
       setSendingEmail(false)
+    }
+  }
+
+  const handleEditTitle = () => {
+    setIsEditingTitle(true)
+  }
+
+  const handleCancelEdit = () => {
+    setIsEditingTitle(false)
+    setEditedTitle(meeting.title || 'Meeting Summary')
+  }
+
+  const handleSaveTitle = async () => {
+    if (!editedTitle.trim()) {
+      alert('Title cannot be empty')
+      return
+    }
+
+    if (editedTitle === meeting.title) {
+      setIsEditingTitle(false)
+      return
+    }
+
+    try {
+      setIsSavingTitle(true)
+      await meetingAPI.updateMeetingTitle(meetingId, editedTitle)
+      setMeeting({ ...meeting, title: editedTitle })
+      setIsEditingTitle(false)
+      alert('✅ Title updated successfully!')
+    } catch (err) {
+      console.error('Failed to update title:', err)
+      alert('Failed to update meeting title. Please try again.')
+    } finally {
+      setIsSavingTitle(false)
     }
   }
 
@@ -182,9 +224,51 @@ const MeetingDetails = () => {
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6 border border-gray-100 dark:border-gray-700">
             <div className="flex items-start justify-between mb-4">
               <div className="flex-1">
-                <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-                  {meeting.title || 'Meeting Summary'}
-                </h1>
+                {isEditingTitle ? (
+                  <div className="flex items-center gap-2 mb-2">
+                    <input
+                      type="text"
+                      value={editedTitle}
+                      onChange={(e) => setEditedTitle(e.target.value)}
+                      className="text-3xl font-bold text-gray-900 dark:text-white bg-white dark:bg-gray-700 border-2 border-blue-500 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      autoFocus
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleSaveTitle()
+                        if (e.key === 'Escape') handleCancelEdit()
+                      }}
+                      disabled={isSavingTitle}
+                    />
+                    <button
+                      onClick={handleSaveTitle}
+                      disabled={isSavingTitle}
+                      className="p-2 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded transition-colors"
+                      title="Save"
+                    >
+                      <Check className="w-5 h-5" />
+                    </button>
+                    <button
+                      onClick={handleCancelEdit}
+                      disabled={isSavingTitle}
+                      className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
+                      title="Cancel"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 mb-2">
+                    <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+                      {meeting.title || 'Meeting Summary'}
+                    </h1>
+                    <button
+                      onClick={handleEditTitle}
+                      className="p-2 text-gray-500 hover:text-blue-600 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+                      title="Edit title"
+                    >
+                      <Edit2 className="w-5 h-5" />
+                    </button>
+                  </div>
+                )}
                 
                 <div className="flex flex-wrap gap-4 text-sm text-gray-600 dark:text-gray-400">
                   <div className="flex items-center space-x-2">
